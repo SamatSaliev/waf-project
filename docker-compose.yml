@@ -1,0 +1,32 @@
+services:
+  waf:
+    build:
+      context: ./waf
+      dockerfile: Dockerfile
+    container_name: waf
+    ports:
+      - "8443:8443"
+    environment:
+      - BACKEND_URL=http://backend:5000
+      - WAF_MODE=blocking
+      - DB_PATH=/data/waf.db
+      - LOG_PATH=/data/events.jsonl
+      - RATE_LIMIT=60
+      - WAF_API_TOKEN=kYX7KsMDmf@pzp3pvlf#8!RlqEPNTBb7
+    volumes:
+      - waf_data:/data
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend
+    expose:
+      - "5000"
+    restart: unless-stopped
+
+volumes:
+  waf_data:

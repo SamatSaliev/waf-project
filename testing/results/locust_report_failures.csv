@@ -1,0 +1,17 @@
+Method,Name,Error,Occurrences
+GET,/.. [PathTraversal],HTTPError('403 Client Error: Forbidden for url: /.. [PathTraversal]'),1
+GET,/health [legit],HTTPError('429 Client Error: Too Many Requests for url: /health [legit]'),114
+GET,/search [SSRF],HTTPError('429 Client Error: Too Many Requests for url: /search [SSRF]'),40
+GET,/.. [PathTraversal],HTTPError('429 Client Error: Too Many Requests for url: /.. [PathTraversal]'),43
+GET,/search [CMDi],HTTPError('429 Client Error: Too Many Requests for url: /search [CMDi]'),40
+GET,/ [legit],HTTPError('429 Client Error: Too Many Requests for url: / [legit]'),210
+POST,/comment [XSS],HTTPError('403 Client Error: Forbidden for url: /comment [XSS]'),4
+GET,/search [SQLi],HTTPError('429 Client Error: Too Many Requests for url: /search [SQLi]'),126
+POST,/login [SQLi],HTTPError('403 Client Error: Forbidden for url: /login [SQLi]'),6
+GET,/search [SQLi],HTTPError('403 Client Error: Forbidden for url: /search [SQLi]'),8
+POST,/comment [XSS],HTTPError('429 Client Error: Too Many Requests for url: /comment [XSS]'),84
+GET,/search [CMDi],HTTPError('403 Client Error: Forbidden for url: /search [CMDi]'),1
+POST,/login [legit],HTTPError('429 Client Error: Too Many Requests for url: /login [legit]'),48
+GET,/search [legit],HTTPError('429 Client Error: Too Many Requests for url: /search [legit]'),241
+GET,/search [SSRF],HTTPError('403 Client Error: Forbidden for url: /search [SSRF]'),1
+POST,/login [SQLi],HTTPError('429 Client Error: Too Many Requests for url: /login [SQLi]'),91

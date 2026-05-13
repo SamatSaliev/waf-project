@@ -1,0 +1,23 @@
+services:
+  locust:
+    image: locustio/locust:2.32.2
+    container_name: locust
+    ports:
+      - "8089:8089"        # Locust Web UI
+    volumes:
+      - ./locust:/mnt/locust
+      - ./results:/mnt/results
+    command: >
+      -f /mnt/locust/locustfile.py
+      --host https://waf:8443
+      --users 100
+      --spawn-rate 10
+      --run-time 60s
+      --headless
+      --csv /mnt/results/locust_report
+      --html /mnt/results/locust_report.html
+
+networks:
+  default:
+    external: true
+    name: waf-project_default
