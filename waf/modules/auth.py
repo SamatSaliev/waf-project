@@ -84,3 +84,48 @@ async def require_token_flexible(
 async def no_auth() -> str:
     """Заглушка — эндпоинт доступен без токена."""
     return ""
+
+
+# ── Session-based auth для веб-интерфейса ────────────────────────────────────
+import hashlib
+import time
+
+# Активные сессии: token -> timestamp
+_sessions: dict[str, float] = {}
+SESSION_TTL = 3600  # 1 час
+
+DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "waf-admin-2024")
+
+
+def _make_session_token() -> str:
+    return secrets.token_hex(32)
+
+
+def create_session() -> str:
+    """Создаёт новую сессию и возвращает токен."""
+    token = _make_session_token()
+    _sessions[token] = time.time()
+    return token
+
+
+def check_session(token: str | None) -> bool:
+    """Проверяет валидность сессии."""
+    if not token:
+        return False
+    ts = _sessions.get(token)
+    if ts is None:
+        return False
+    if time.time() - ts > SESSION_TTL:
+        del _sessions[token]
+        return False
+    return True
+
+
+def verify_password(password: str) -> bool:
+    """Проверяет пароль дашборда."""
+    return secrets.compare_digest(password, DASHBOARD_PASSWORD)
+
+
+def destroy_session(token: str) -> None:
+    """Удаляет сессию (выход)."""
+    _sessions.pop(token, None)

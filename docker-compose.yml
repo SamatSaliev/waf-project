@@ -12,7 +12,13 @@ services:
       - DB_PATH=/data/waf.db
       - LOG_PATH=/data/events.jsonl
       - RATE_LIMIT=60
-      - WAF_API_TOKEN=kYX7KsMDmf@pzp3pvlf#8!RlqEPNTBb7
+      - WAF_API_TOKEN=my-secret-token-change-me
+      - DASHBOARD_PASSWORD=waf-admin-2024
+      # ── Threat Intelligence (POKS TI) ──────────────────────
+      - TI_ENABLED=true
+      - TI_BASE_URL=http://10.135.126.10:8080
+      - TI_SYNC_INTERVAL=300
+      - TI_SCORE_THRESHOLD=50
     volumes:
       - waf_data:/data
     depends_on:

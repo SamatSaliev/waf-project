@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>WAF — Вход</title>
+  <style>
+    :root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--accent:#58a6ff;
+          --danger:#f85149;--muted:#8b949e;--text:#c9d1d9;
+          --font:"JetBrains Mono","Fira Code",monospace;}
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:13px;
+         min-height:100vh;display:flex;align-items:center;justify-content:center;}
+    body::before{content:'';position:fixed;inset:0;
+      background:radial-gradient(ellipse at 20% 50%,rgba(88,166,255,.07) 0%,transparent 60%),
+                 radial-gradient(ellipse at 80% 20%,rgba(248,81,73,.07) 0%,transparent 50%);
+      pointer-events:none;}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+          padding:2.5rem 2rem;width:100%;max-width:380px;
+          box-shadow:0 8px 32px rgba(0,0,0,.4);animation:up .3s ease;}
+    @keyframes up{from{opacity:0;transform:translateY(16px);}to{opacity:1;}}
+    .logo{text-align:center;margin-bottom:2rem;}
+    .logo-icon{font-size:2.5rem;display:block;margin-bottom:.5rem;
+               filter:drop-shadow(0 0 12px rgba(88,166,255,.4));}
+    .logo h1{font-size:1.1rem;color:var(--accent);letter-spacing:.08em;}
+    .logo p{font-size:.72rem;color:var(--muted);margin-top:.25rem;}
+    .field{display:flex;flex-direction:column;gap:.4rem;margin-bottom:1rem;}
+    .field label{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
+    .field input{padding:.6rem .85rem;border-radius:6px;border:1px solid var(--border);
+                 background:var(--bg);color:var(--text);font-family:var(--font);
+                 font-size:.9rem;transition:border-color .2s;width:100%;}
+    .field input:focus{outline:none;border-color:var(--accent);
+                       box-shadow:0 0 0 3px rgba(88,166,255,.1);}
+    .field input::placeholder{color:var(--muted);}
+    .btn-login{width:100%;padding:.65rem;border-radius:6px;border:none;
+               background:var(--accent);color:#0d1117;font-family:var(--font);
+               font-size:.9rem;font-weight:700;cursor:pointer;
+               letter-spacing:.04em;transition:opacity .2s;margin-top:.5rem;}
+    .btn-login:hover{opacity:.88;}
+    .error{background:#3d1a1a;border:1px solid var(--danger);border-radius:6px;
+           padding:.6rem .85rem;color:var(--danger);font-size:.8rem;margin-bottom:1rem;}
+    .footer{text-align:center;margin-top:1.5rem;font-size:.7rem;color:var(--muted);}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <span class="logo-icon">🛡</span>
+      <h1>WAF Dashboard</h1>
+      <p>Web Application Firewall · Панель управления</p>
+    </div>
+    {% if error %}
+    <div class="error">✕ {{ error }}</div>
+    {% endif %}
+    <form method="post" action="/waf-login">
+      <div class="field">
+        <label>Пароль</label>
+        <input type="password" name="password"
+               placeholder="Введите пароль" autofocus
+               autocomplete="current-password"/>
+      </div>
+      <button type="submit" class="btn-login">Войти →</button>
+    </form>
+    <div class="footer">WAF Diploma Project · REST API: /docs</div>
+  </div>
+</body>
+</html>

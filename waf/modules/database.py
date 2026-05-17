@@ -132,3 +132,26 @@ async def get_events_stats(db_path: str) -> dict:
             stats[action] = count
         stats["total"] += count
     return stats
+
+
+async def get_unique_ips(db_path: str, limit: int = 100) -> list[dict]:
+    """Возвращает уникальные IP с количеством запросов и последним действием."""
+    async with aiosqlite.connect(db_path) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT
+                client_ip,
+                COUNT(*) as total,
+                SUM(CASE WHEN action='block' THEN 1 ELSE 0 END) as blocked,
+                SUM(CASE WHEN action='detect' THEN 1 ELSE 0 END) as detected,
+                SUM(CASE WHEN action='allow' THEN 1 ELSE 0 END) as allowed,
+                MAX(timestamp) as last_seen
+               FROM events
+               WHERE client_ip IS NOT NULL
+               GROUP BY client_ip
+               ORDER BY total DESC
+               LIMIT ?""",
+            (limit,),
+        ) as cur:
+            rows = await cur.fetchall()
+    return [dict(r) for r in rows]

@@ -10,14 +10,17 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request, status
+from fastapi import Cookie, Depends, FastAPI, Form, HTTPException, Request, status, Cookie
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from modules.auth import API_TOKEN, no_auth, require_token, require_token_flexible
-from modules.database import get_all_events_count, get_events_paginated, get_events_stats, init_db
+from modules.auth import (
+    API_TOKEN, no_auth, require_token, require_token_flexible,
+    check_session, create_session, destroy_session, verify_password,
+)
+from modules.database import get_all_events_count, get_events_paginated, get_events_stats, get_unique_ips, init_db
 from modules.decision_engine import DecisionEngine
 from modules.ip_filter import IpFilter
 from modules.logger import EventLogger
@@ -31,6 +34,7 @@ from modules.rules_api import (
 from modules.correlator import (
     Correlator, get_recent_incidents, update_incident_status,
 )
+from modules.ti_sync import TISync
 
 # ── Конфигурация ──────────────────────────────────────────────────────────────
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:5000")
@@ -46,6 +50,7 @@ event_logger    = EventLogger(log_path=LOG_PATH, db_path=DB_PATH)
 rate_limiter    = RateLimiter(max_requests=RATE_LIMIT, window_seconds=60)
 ip_filter       = IpFilter(db_path=DB_PATH)
 correlator      = Correlator(db_path=DB_PATH)
+ti_sync         = TISync(ip_filter=ip_filter, db_path=DB_PATH)
 
 templates = Jinja2Templates(directory="templates")
 os.makedirs("static", exist_ok=True)
@@ -56,11 +61,13 @@ async def lifespan(app: FastAPI):
     await init_db(DB_PATH)
     await rule_engine.load_rules(DB_PATH)
     await ip_filter.load()
+    await ti_sync.start()
     print(f"\n{'='*60}")
     print(f"  WAF | Режим: {WAF_MODE} | Rate limit: {RATE_LIMIT}/min")
     print(f"  API Token: {API_TOKEN}")
     print(f"{'='*60}\n")
     yield
+    ti_sync.stop()
 
 
 app = FastAPI(title="Python WAF — Этап 5", lifespan=lifespan)
@@ -68,11 +75,106 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# AUTH — Login / Logout
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/waf-login", response_class=HTMLResponse, tags=["auth"])
+async def login_page(request: Request, waf_session: str | None = Cookie(default=None)):
+    if check_session(waf_session):
+        return RedirectResponse("/waf-admin", status_code=303)
+    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+
+
+@app.post("/waf-login", tags=["auth"])
+async def login_submit(
+    request: Request,
+    password: str = Form(...),
+    waf_session: str | None = Cookie(default=None),
+):
+    if verify_password(password):
+        token = create_session()
+        response = RedirectResponse("/waf-admin", status_code=303)
+        response.set_cookie(
+            key="waf_session", value=token,
+            httponly=True, samesite="lax",
+            max_age=3600,
+        )
+        return response
+    return templates.TemplateResponse(
+        "login.html",
+        {"request": request, "error": "Неверный пароль"},
+        status_code=401,
+    )
+
+
+@app.get("/waf-logout", tags=["auth"])
+async def logout(waf_session: str | None = Cookie(default=None)):
+    destroy_session(waf_session or "")
+    response = RedirectResponse("/waf-login", status_code=303)
+    response.delete_cookie("waf_session")
+    return response
+
+
+# ── Вспомогательная dependency для проверки сессии ───────────────────────────
+async def require_session(
+    request: Request,
+    waf_session: str | None = Cookie(default=None),
+):
+    if not check_session(waf_session):
+        raise HTTPException(
+            status_code=303,
+            headers={"Location": "/waf-login"},
+        )
+    return waf_session
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# AUTH — Login / Logout
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/waf-login", response_class=HTMLResponse, tags=["auth"])
+async def login_page(request: Request, waf_session: str | None = Cookie(default=None)):
+    if check_session(waf_session):
+        return RedirectResponse("/waf-admin", status_code=303)
+    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+
+
+@app.post("/waf-login", response_class=HTMLResponse, tags=["auth"])
+async def login_submit(request: Request, password: str = Form(...)):
+    if verify_password(password):
+        token = create_session()
+        response = RedirectResponse("/waf-admin", status_code=303)
+        response.set_cookie(
+            key="waf_session", value=token,
+            httponly=True, samesite="lax",
+            max_age=3600,
+        )
+        return response
+    return templates.TemplateResponse(
+        "login.html",
+        {"request": request, "error": "Неверный пароль"},
+        status_code=401,
+    )
+
+
+@app.get("/waf-logout", tags=["auth"])
+async def logout(waf_session: str | None = Cookie(default=None)):
+    if waf_session:
+        destroy_session(waf_session)
+    response = RedirectResponse("/waf-login", status_code=303)
+    response.delete_cookie("waf_session")
+    return response
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # ADMIN UI
 # ═══════════════════════════════════════════════════════════════════════════════
 
 @app.get("/waf-admin", response_class=HTMLResponse, tags=["admin-ui"])
-async def admin_dashboard(request: Request):
+async def admin_dashboard(
+    request: Request,
+    waf_session: str = Depends(require_session),
+):
     page      = int(request.query_params.get("page", 1))
     per_page  = 100
     action    = request.query_params.get("action", "all")
@@ -102,7 +204,7 @@ async def admin_dashboard(request: Request):
 
 
 @app.post("/waf-admin/mode", tags=["admin-ui"])
-async def admin_set_mode(mode: str = Form(...)):
+async def admin_set_mode(mode: str = Form(...), _: str = Depends(require_session)):
     """Переключает режим WAF между blocking и detection прямо из UI."""
     global WAF_MODE
     if mode not in ("blocking", "detection"):
@@ -113,7 +215,10 @@ async def admin_set_mode(mode: str = Form(...)):
 
 
 @app.post("/waf-admin/ip/add", tags=["admin-ui"])
-async def admin_ip_add(ip: str = Form(...), action: str = Form(...), comment: str = Form("")):
+async def admin_ip_add(
+    ip: str = Form(...), action: str = Form(...),
+    comment: str = Form(""), _: str = Depends(require_session),
+):
     if action not in ("allow", "block"):
         return JSONResponse(status_code=400, content={"error": "action must be allow or block"})
     await ip_filter.add_ip(ip, action, comment)  # type: ignore[arg-type]
@@ -121,21 +226,42 @@ async def admin_ip_add(ip: str = Form(...), action: str = Form(...), comment: st
 
 
 @app.post("/waf-admin/ip/remove", tags=["admin-ui"])
-async def admin_ip_remove(ip: str = Form(...)):
+async def admin_ip_remove(ip: str = Form(...), _: str = Depends(require_session)):
     await ip_filter.remove_ip(ip)
     return RedirectResponse("/waf-admin", status_code=303)
 
 
 @app.post("/waf-admin/incidents/{incident_id}/resolve", tags=["admin-ui"])
-async def admin_resolve_incident(incident_id: int):
+async def admin_resolve_incident(incident_id: int, _: str = Depends(require_session)):
     await update_incident_status(DB_PATH, incident_id, "resolved")
     return RedirectResponse("/waf-admin", status_code=303)
 
 
 @app.post("/waf-admin/incidents/{incident_id}/fp", tags=["admin-ui"])
-async def admin_fp_incident(incident_id: int):
+async def admin_fp_incident(incident_id: int, _: str = Depends(require_session)):
     await update_incident_status(DB_PATH, incident_id, "false_positive")
     return RedirectResponse("/waf-admin", status_code=303)
+
+
+@app.get("/api/v1/ti/status", tags=["api-ti"])
+async def api_ti_status(_: str = Depends(require_token)):
+    """Статус TI синхронизации."""
+    from modules.ti_sync import TI_BASE_URL, TI_SYNC_INTERVAL, TI_SCORE_THRESHOLD, TI_ENABLED
+    return {
+        "enabled":        TI_ENABLED,
+        "ti_url":         TI_BASE_URL,
+        "interval_sec":   TI_SYNC_INTERVAL,
+        "score_threshold": TI_SCORE_THRESHOLD,
+        "synced_ips":     len(ti_sync._synced),
+        "synced_list":    list(ti_sync._synced),
+    }
+
+
+@app.post("/api/v1/ti/sync", tags=["api-ti"])
+async def api_ti_sync_now(_: str = Depends(require_token)):
+    """Принудительная синхронизация с TI прямо сейчас."""
+    result = await ti_sync.sync_now()
+    return result
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -281,6 +407,13 @@ async def api_ip_add(body: IpEntry, _: str = Depends(require_token)):
 @app.delete("/api/v1/ip-list/{ip}", status_code=status.HTTP_204_NO_CONTENT, tags=["api-ip"])
 async def api_ip_remove(ip: str, _: str = Depends(require_token)):
     await ip_filter.remove_ip(ip)
+
+
+@app.get("/api/v1/geo", tags=["api-geo"])
+async def api_geo(_: str = Depends(no_auth)):
+    """Возвращает уникальные IP для отображения на карте."""
+    ips = await get_unique_ips(DB_PATH, limit=200)
+    return {"ips": ips}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
