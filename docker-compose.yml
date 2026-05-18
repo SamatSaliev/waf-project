@@ -12,7 +12,8 @@ services:
       - DB_PATH=/data/waf.db
       - LOG_PATH=/data/events.jsonl
       - RATE_LIMIT=60
-      - WAF_API_TOKEN=my-secret-token-change-me
+      - TZ=Asia/Bishkek
+      - WAF_API_TOKEN=OQVK9sxmqjtc60KkAI$TOov0TO$Q!YTY
       - DASHBOARD_PASSWORD=waf-admin-2024
       # ── Threat Intelligence (POKS TI) ──────────────────────
       - TI_ENABLED=true
