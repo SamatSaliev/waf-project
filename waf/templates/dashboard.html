@@ -4,6 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>WAF Dashboard</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
   <style>
     :root {
       --bg:#0d1117; --surface:#161b22; --border:#30363d;
@@ -150,6 +151,19 @@
                     cursor:pointer;text-decoration:none;white-space:nowrap;}
     .btn-export-hdr:hover{background:#122117;}
 
+    /* Map */
+    #map { height: 520px; border-radius: 8px; border: 1px solid var(--border); }
+    .map-legend { display: flex; gap: 1rem; padding: .6rem 0; font-size: .75rem; flex-wrap: wrap; }
+    .legend-item { display: flex; align-items: center; gap: .35rem; }
+    .legend-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+    .map-stats { display: flex; gap: 1rem; padding: .5rem 0 .75rem; flex-wrap: wrap; }
+    .map-stat { background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+                padding: .4rem .8rem; font-size: .75rem; }
+    .map-stat strong { color: var(--accent); }
+    .leaflet-popup-content-wrapper { background: var(--surface) !important; color: var(--text) !important;
+                                      border: 1px solid var(--border) !important; border-radius: 6px !important; }
+    .leaflet-popup-tip { background: var(--surface) !important; }
+
     @keyframes fadeIn{from{opacity:0;transform:translateY(3px);}to{opacity:1;}}
     tbody tr{animation:fadeIn .18s ease;}
   </style>
@@ -180,6 +194,7 @@
     <a class="btn-export-hdr" href="/api/v1/events/export/json">⬇ JSON</a>
     <a class="btn-export-hdr" href="/api/v1/events/export/csv">⬇ CSV</a>
     <button class="btn ml-auto" onclick="location.reload()">⟳</button>
+    <a href="/waf-logout" class="btn-mode btn-mode-switch" style="text-decoration:none;">⏻ Выйти</a>
   </div>
 </header>
 
@@ -202,10 +217,12 @@
 
 <nav>
   <div class="tab active" onclick="showTab('events',this)">События</div>
+  <div class="tab" onclick="showTab('charts',this)">📊 Графики</div>
   <div class="tab" onclick="showTab('incidents',this)">
     Инциденты
     {% if open_inc > 0 %}<span class="tab-badge">{{ open_inc }}</span>{% endif %}
   </div>
+  <div class="tab" onclick="showTab('map',this)" id="tab-map">🌍 Карта атак</div>
   <div class="tab" onclick="showTab('rules',this)">Правила</div>
   <div class="tab" onclick="showTab('iplist',this)">IP Management</div>
   <div class="tab" onclick="showTab('api',this)">API Docs</div>
@@ -268,6 +285,75 @@
     {% endif %}
   </div>
   {% endif %}
+</div>
+
+<!-- ══ CHARTS ══ -->
+<div id="page-charts" class="page">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:.75rem 0;">
+    <span style="font-size:.8rem;color:var(--muted);">Данные обновляются при переходе на вкладку</span>
+    <button class="btn" onclick="loadCharts()" style="font-size:.75rem;">⟳ Обновить</button>
+  </div>
+
+  <!-- Графики 2x2 -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1.5rem;">
+
+    <!-- 1. Запросы по часам -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.25rem;">
+      <div style="font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:1rem;">
+        Запросы по часам (последние 24ч)
+      </div>
+      <canvas id="chartHourly" height="200"></canvas>
+    </div>
+
+    <!-- 2. Пончик — распределение -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.25rem;">
+      <div style="font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:1rem;">
+        Распределение действий (всего)
+      </div>
+      <canvas id="chartDonut" height="200"></canvas>
+    </div>
+
+    <!-- 3. Топ правил -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.25rem;">
+      <div style="font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:1rem;">
+        Топ сработавших правил
+      </div>
+      <canvas id="chartRules" height="200"></canvas>
+    </div>
+
+    <!-- 4. Топ IP -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.25rem;">
+      <div style="font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:1rem;">
+        Топ атакующих IP
+      </div>
+      <canvas id="chartIPs" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- 5. График по дням (широкий) -->
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.25rem;">
+    <div style="font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:1rem;">
+      Динамика за последние 7 дней
+    </div>
+    <canvas id="chartDaily" height="120"></canvas>
+  </div>
+</div>
+
+<!-- ══ MAP ══ -->
+<div id="page-map" class="page">
+  <div class="map-stats" id="mapStats">
+    <div class="map-stat">Загрузка данных...</div>
+  </div>
+  <div class="map-legend">
+    <div class="legend-item"><span class="legend-dot" style="background:#f85149"></span> Заблокированные IP</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#e3b341"></span> Обнаруженные IP</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#3fb950"></span> Легитимные IP</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#58a6ff;border:2px solid #fff"></span> Ваш сервер (WAF)</div>
+  </div>
+  <div id="map"></div>
+  <div style="font-size:.72rem;color:var(--muted);padding:.5rem 0;">
+    Геолокация предоставлена ip-api.com. Приватные IP (10.x, 192.168.x, 172.x) не отображаются на карте.
+  </div>
 </div>
 
 <!-- ══ INCIDENTS ══ -->
@@ -527,6 +613,242 @@ async function deleteRule(id) {
   if (!confirm(`Удалить правило #${id}?`)) return;
   const r = await apiCall('DELETE', `/api/v1/rules/${id}`);
   if (r.status === 204) location.reload();
+}
+
+// ── Карта атак ────────────────────────────────────────────────────────────────
+let mapInitialized = false;
+
+const _origShowTab = showTab;
+function showTab(name, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('page-' + name).classList.add('active');
+  if (name === 'map') initMap();
+}
+
+async function initMap() {
+  if (mapInitialized) return;
+  mapInitialized = true;
+
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js');
+
+  const leafletMap = L.map('map').setView([30, 15], 2);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap © CARTO', maxZoom: 18,
+  }).addTo(leafletMap);
+
+  // Сервер WAF — Бишкек
+  const serverLat = 42.8746, serverLng = 74.5698;
+  const serverIcon = L.divIcon({
+    html: '<div style="width:16px;height:16px;background:#58a6ff;border:3px solid #fff;border-radius:50%;box-shadow:0 0 10px #58a6ff"></div>',
+    iconSize: [16,16], iconAnchor: [8,8],
+  });
+  L.marker([serverLat, serverLng], {icon: serverIcon}).addTo(leafletMap)
+   .bindPopup('<strong style="color:#58a6ff">🛡 WAF Сервер</strong><br>Бишкек, Кыргызстан');
+
+  const statsEl = document.getElementById('mapStats');
+  const resp = await fetch('/api/v1/geo');
+  const data = await resp.json();
+  const ips  = data.ips || [];
+
+  const privateRanges = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|127\.)/;
+  const publicIps = ips.filter(i => !privateRanges.test(i.client_ip));
+
+  statsEl.innerHTML = `
+    <div class="map-stat">Уникальных IP: <strong>${ips.length}</strong></div>
+    <div class="map-stat">Публичных: <strong>${publicIps.length}</strong></div>
+    <div class="map-stat">Приватных: <strong>${ips.length - publicIps.length}</strong></div>
+  `;
+
+  if (publicIps.length === 0) {
+    statsEl.innerHTML += '<div class="map-stat" style="color:var(--warn)">⚠ Все IP приватные — геолокация недоступна</div>';
+    return;
+  }
+
+  // Batch геолокация ip-api.com
+  let geoResults = [];
+  try {
+    const batch = publicIps.slice(0,100).map(i => ({query: i.client_ip}));
+    const geoResp = await fetch('http://ip-api.com/batch?fields=status,lat,lon,country,city,query', {
+      method: 'POST', body: JSON.stringify(batch),
+    });
+    geoResults = await geoResp.json();
+  } catch(e) {
+    statsEl.innerHTML += '<div class="map-stat" style="color:var(--warn)">⚠ Ошибка геолокации</div>';
+    return;
+  }
+
+  let geoFound = 0;
+  const bounds = [[serverLat, serverLng]];
+
+  geoResults.forEach((geo, idx) => {
+    if (geo.status !== 'success') return;
+    const ip = publicIps[idx];
+    geoFound++;
+
+    let color = '#3fb950';
+    if (ip.blocked > 0) color = '#f85149';
+    else if (ip.detected > 0) color = '#e3b341';
+
+    const size = Math.min(8 + Math.log2(ip.total + 1) * 3, 24);
+    const icon = L.divIcon({
+      html: `<div style="width:${size}px;height:${size}px;background:${color};border:2px solid rgba(255,255,255,0.5);border-radius:50%;box-shadow:0 0 6px ${color}"></div>`,
+      iconSize: [size,size], iconAnchor: [size/2,size/2],
+    });
+
+    L.marker([geo.lat, geo.lon], {icon}).addTo(leafletMap).bindPopup(`
+      <div style="font-family:monospace;font-size:12px;min-width:160px">
+        <strong style="color:${color}">${geo.city||'—'}, ${geo.country||'—'}</strong><br>
+        <span style="color:#8b949e">${ip.client_ip}</span><br>
+        <hr style="border-color:#30363d;margin:4px 0">
+        🔴 Заблокировано: <b>${ip.blocked}</b><br>
+        🟡 Обнаружено: <b>${ip.detected}</b><br>
+        🟢 Пропущено: <b>${ip.allowed}</b><br>
+        📊 Всего: <b>${ip.total}</b>
+      </div>
+    `);
+
+    if (ip.blocked > 0) {
+      L.polyline([[geo.lat,geo.lon],[serverLat,serverLng]], {
+        color:'#f85149', weight:1, opacity:0.25, dashArray:'4,6',
+      }).addTo(leafletMap);
+    }
+
+    bounds.push([geo.lat, geo.lon]);
+  });
+
+  statsEl.innerHTML += `<div class="map-stat">На карте: <strong>${geoFound}</strong></div>`;
+  if (bounds.length > 1) leafletMap.fitBounds(bounds, {padding:[40,40]});
+}
+
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+}
+
+// ── Графики ────────────────────────────────────────────────────────────────────
+let chartsInitialized = false;
+let chartInstances = {};
+
+const C = {
+  block:  '#f85149',
+  detect: '#e3b341',
+  allow:  '#3fb950',
+  accent: '#58a6ff',
+  muted:  '#8b949e',
+  grid:   '#21262d',
+};
+
+const chartDefaults = {
+  color: C.muted,
+  borderColor: C.grid,
+  plugins: {
+    legend: { labels: { color: C.muted, font: { family: 'monospace', size: 11 } } },
+    tooltip: { backgroundColor: '#161b22', borderColor: '#30363d', borderWidth: 1,
+                titleColor: '#c9d1d9', bodyColor: '#8b949e' },
+  },
+  scales: {
+    x: { ticks: { color: C.muted, font: { size: 10 } }, grid: { color: C.grid } },
+    y: { ticks: { color: C.muted, font: { size: 10 } }, grid: { color: C.grid }, beginAtZero: true },
+  },
+};
+
+async function loadCharts() {
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js');
+
+  const resp = await fetch('/api/v1/charts');
+  const d = await resp.json();
+
+  // Уничтожаем старые графики
+  Object.values(chartInstances).forEach(c => c.destroy());
+  chartInstances = {};
+
+  // 1. Почасовой график
+  chartInstances.hourly = new Chart(document.getElementById('chartHourly'), {
+    type: 'line',
+    data: {
+      labels: d.hourly.labels,
+      datasets: [
+        { label: 'Block',  data: d.hourly.block,  borderColor: C.block,  backgroundColor: C.block+'33',  fill: true, tension: .3, pointRadius: 2 },
+        { label: 'Detect', data: d.hourly.detect, borderColor: C.detect, backgroundColor: C.detect+'33', fill: true, tension: .3, pointRadius: 2 },
+        { label: 'Allow',  data: d.hourly.allow,  borderColor: C.allow,  backgroundColor: C.allow+'22',  fill: true, tension: .3, pointRadius: 2 },
+      ],
+    },
+    options: { ...chartDefaults, responsive: true, maintainAspectRatio: true },
+  });
+
+  // 2. Пончик
+  const stats = {{ stats | tojson }};
+  chartInstances.donut = new Chart(document.getElementById('chartDonut'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Заблокировано', 'Обнаружено', 'Пропущено'],
+      datasets: [{ data: [stats.block, stats.detect, stats.allow],
+                   backgroundColor: [C.block, C.detect, C.allow],
+                   borderColor: '#161b22', borderWidth: 3 }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { position: 'bottom', labels: { color: C.muted, font: { size: 11 } } },
+                 tooltip: chartDefaults.plugins.tooltip },
+    },
+  });
+
+  // 3. Топ правил
+  chartInstances.rules = new Chart(document.getElementById('chartRules'), {
+    type: 'bar',
+    data: {
+      labels: d.rules.labels.map(l => l.length > 25 ? l.slice(0,25)+'…' : l),
+      datasets: [{ label: 'Срабатываний', data: d.rules.values,
+                   backgroundColor: C.block+'bb', borderColor: C.block, borderWidth: 1 }],
+    },
+    options: { ...chartDefaults, indexAxis: 'y', responsive: true, maintainAspectRatio: true,
+               plugins: { ...chartDefaults.plugins, legend: { display: false } } },
+  });
+
+  // 4. Топ IP
+  chartInstances.ips = new Chart(document.getElementById('chartIPs'), {
+    type: 'bar',
+    data: {
+      labels: d.top_ips.labels,
+      datasets: [{ label: 'Атак', data: d.top_ips.values,
+                   backgroundColor: C.detect+'bb', borderColor: C.detect, borderWidth: 1 }],
+    },
+    options: { ...chartDefaults, indexAxis: 'y', responsive: true, maintainAspectRatio: true,
+               plugins: { ...chartDefaults.plugins, legend: { display: false } } },
+  });
+
+  // 5. По дням
+  chartInstances.daily = new Chart(document.getElementById('chartDaily'), {
+    type: 'bar',
+    data: {
+      labels: d.daily.labels,
+      datasets: [
+        { label: 'Block',  data: d.daily.block,  backgroundColor: C.block+'bb'  },
+        { label: 'Detect', data: d.daily.detect, backgroundColor: C.detect+'bb' },
+        { label: 'Allow',  data: d.daily.allow,  backgroundColor: C.allow+'bb'  },
+      ],
+    },
+    options: { ...chartDefaults, responsive: true, maintainAspectRatio: true,
+               scales: { ...chartDefaults.scales, x: { ...chartDefaults.scales.x, stacked: true },
+                         y: { ...chartDefaults.scales.y, stacked: true } } },
+  });
+}
+
+// Перехватываем showTab чтобы подгружать графики
+const _origShowTabFn = showTab;
+function showTab(name, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('page-' + name).classList.add('active');
+  if (name === 'charts') loadCharts();
+  if (name === 'map') initMap();
 }
 
 renderTable();

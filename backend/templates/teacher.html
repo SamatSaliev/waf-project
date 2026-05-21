@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ teacher.name }} — Кафедра ПОКС{% endblock %}
+{% block content %}
+
+<div class="page-hero">
+  <div class="breadcrumb"><a href="/">Главная</a> / <a href="/teachers">Преподаватели</a> / {{ teacher.name }}</div>
+  <h1>{{ teacher.name }}</h1>
+  <p>{{ teacher.position }}</p>
+</div>
+
+<section class="section">
+  <div class="container">
+    <div style="display:grid;grid-template-columns:280px 1fr;gap:2.5rem;align-items:start;">
+      <div class="card" style="padding:2rem;text-align:center;">
+        <div class="teacher-avatar" style="width:120px;height:120px;font-size:2rem;margin-bottom:1.25rem;">{{ teacher.initials }}</div>
+        <h3 style="font-family:var(--ff-head);color:var(--navy);">{{ teacher.name }}</h3>
+        <div class="position" style="margin:0.4rem 0 1rem;">{{ teacher.position }}</div>
+        <div style="font-size:.85rem;color:var(--muted);text-align:left;display:flex;flex-direction:column;gap:.4rem;">
+          <span>📍 {{ teacher.office }}</span>
+          <span>✉️ {{ teacher.email }}</span>
+        </div>
+      </div>
+      <div>
+        <div class="card" style="padding:2rem;margin-bottom:1.5rem;">
+          <h3 style="font-family:var(--ff-head);color:var(--navy);margin-bottom:1rem;">О преподавателе</h3>
+          <p style="color:var(--muted);">{{ teacher.bio }}</p>
+        </div>
+        <div class="card" style="padding:2rem;">
+          <h3 style="font-family:var(--ff-head);color:var(--navy);margin-bottom:1rem;">Преподаваемые дисциплины</h3>
+          <div style="display:flex;flex-wrap:wrap;gap:.5rem;">
+            {% for s in teacher.subjects %}
+            <span class="badge badge-required" style="font-size:.85rem;padding:.35rem .8rem;">{{ s }}</span>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:1.5rem;">
+      <a href="/teachers" class="btn btn-primary">← Все преподаватели</a>
+    </div>
+  </div>
+</section>
+
+{% endblock %}

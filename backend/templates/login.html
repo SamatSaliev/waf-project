@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Вход — Кафедра ПОКС{% endblock %}
+{% block content %}
+<section style="min-height:60vh;display:flex;align-items:center;justify-content:center;padding:3rem 1rem;">
+  <div style="width:100%;max-width:420px;">
+    <div class="card" style="padding:2.5rem;">
+      <div style="text-align:center;margin-bottom:2rem;">
+        <div class="logo-emblem" style="margin:0 auto 1rem;width:64px;height:64px;font-size:1.3rem;">КГ</div>
+        <h2 style="font-family:var(--ff-head);color:var(--navy);">Личный кабинет</h2>
+        <p style="color:var(--muted);font-size:.9rem;">Кафедра ПОКС, КГТУ</p>
+      </div>
+      {% if error %}
+      <div class="alert alert-danger">⚠️ {{ error }}</div>
+      {% endif %}
+      <form method="post" action="/login">
+        <div class="form-group">
+          <label>Логин</label>
+          <input class="form-control" type="text" name="username" placeholder="Введите логин" autofocus required/>
+        </div>
+        <div class="form-group">
+          <label>Пароль</label>
+          <input class="form-control" type="password" name="password" placeholder="Введите пароль" required/>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:.5rem;">Войти →</button>
+      </form>
+      <div style="text-align:center;margin-top:1.25rem;font-size:.82rem;color:var(--muted);">
+        Для получения доступа обратитесь в деканат
+      </div>
+    </div>
+    <div style="text-align:center;margin-top:1rem;font-size:.82rem;color:var(--muted);">
+      <strong>Тест:</strong> student / student123 &nbsp;|&nbsp; admin / admin123
+    </div>
+  </div>
+</section>
+{% endblock %}

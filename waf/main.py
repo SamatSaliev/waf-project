@@ -20,7 +20,7 @@ from modules.auth import (
     API_TOKEN, no_auth, require_token, require_token_flexible,
     check_session, create_session, destroy_session, verify_password,
 )
-from modules.database import get_all_events_count, get_events_paginated, get_events_stats, get_unique_ips, init_db
+from modules.database import get_all_events_count, get_chart_data, get_events_paginated, get_events_stats, get_unique_ips, init_db
 from modules.decision_engine import DecisionEngine
 from modules.ip_filter import IpFilter
 from modules.logger import EventLogger
@@ -407,6 +407,13 @@ async def api_ip_add(body: IpEntry, _: str = Depends(require_token)):
 @app.delete("/api/v1/ip-list/{ip}", status_code=status.HTTP_204_NO_CONTENT, tags=["api-ip"])
 async def api_ip_remove(ip: str, _: str = Depends(require_token)):
     await ip_filter.remove_ip(ip)
+
+
+@app.get("/api/v1/charts", tags=["api-charts"])
+async def api_charts(_: str = Depends(no_auth)):
+    """Данные для графиков дашборда."""
+    data = await get_chart_data(DB_PATH)
+    return data
 
 
 @app.get("/api/v1/geo", tags=["api-geo"])

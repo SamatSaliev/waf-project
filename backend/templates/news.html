@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Новости — Кафедра ПОКС{% endblock %}
+{% block content %}
+<div class="page-hero">
+  <div class="breadcrumb"><a href="/">Главная</a> / Новости</div>
+  <h1>Новости кафедры</h1>
+  <p>Актуальные события и достижения</p>
+</div>
+<section class="section">
+  <div class="container">
+    <div style="display:flex;flex-direction:column;gap:1.5rem;max-width:800px;margin:0 auto;">
+      {% for n in news %}
+      <div class="card news-card">
+        <div style="display:flex;align-items:center;gap:1rem;margin-bottom:.75rem;">
+          <span class="news-tag">{{ n.tag }}</span>
+          <span class="news-date">📅 {{ n.date }}</span>
+        </div>
+        <h3 style="font-family:var(--ff-head);font-size:1.2rem;color:var(--navy);margin-bottom:.75rem;">{{ n.title }}</h3>
+        <p style="color:var(--muted);">{{ n.text }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}О кафедре — ПОКС КГТУ{% endblock %}
+{% block content %}
+<div class="page-hero">
+  <div class="breadcrumb"><a href="/">Главная</a> / О кафедре</div>
+  <h1>О кафедре ПОКС</h1>
+  <p>{{ dept.university }}</p>
+</div>
+<section class="section">
+  <div class="container">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:start;">
+      <div>
+        <h2 style="font-family:var(--ff-head);color:var(--navy);margin-bottom:1rem;">История и миссия</h2>
+        <p style="color:var(--muted);margin-bottom:1rem;">Кафедра «Программное Обеспечение Компьютерных Систем» основана в {{ dept.founded }} году как часть {{ dept.faculty }} {{ dept.university }}.</p>
+        <p style="color:var(--muted);margin-bottom:1rem;">Наша миссия — подготовка высококвалифицированных специалистов в области разработки программного обеспечения, информационной безопасности и современных IT-технологий, востребованных как на рынке труда Кыргызстана, так и за рубежом.</p>
+        <p style="color:var(--muted);">Кафедра активно сотрудничает с ведущими IT-компаниями республики, обеспечивая студентам возможность прохождения практики и трудоустройства после окончания обучения.</p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:1rem;">
+        {% set items = [
+          ("🎓", "Год основания", dept.founded),
+          ("🏛", "Факультет", dept.faculty),
+          ("📍", "Адрес", dept.address),
+          ("✉️", "Email", dept.email),
+          ("📞", "Телефон", dept.phone),
+        ] %}
+        {% for icon, label, val in items %}
+        <div style="background:var(--light);border-radius:8px;padding:1rem 1.25rem;display:flex;align-items:center;gap:1rem;">
+          <span style="font-size:1.4rem;">{{ icon }}</span>
+          <div>
+            <div style="font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">{{ label }}</div>
+            <div style="font-weight:500;color:var(--navy);">{{ val }}</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

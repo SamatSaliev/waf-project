@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Кабинет — Кафедра ПОКС{% endblock %}
+{% block content %}
+<div class="page-hero">
+  <h1>Личный кабинет</h1>
+  <p>Добро пожаловать, {{ name }}!</p>
+</div>
+<section class="section">
+  <div class="container" style="max-width:800px;">
+    <div class="card" style="padding:2rem;margin-bottom:1.5rem;">
+      <h3 style="font-family:var(--ff-head);color:var(--navy);margin-bottom:1rem;">Информация о пользователе</h3>
+      <div style="display:flex;flex-direction:column;gap:.75rem;">
+        <div style="display:flex;gap:1rem;"><span style="font-weight:600;width:120px;color:var(--muted);">Имя:</span><span>{{ name }}</span></div>
+        <div style="display:flex;gap:1rem;"><span style="font-weight:600;width:120px;color:var(--muted);">Роль:</span>
+          <span class="badge {% if role=='admin' %}badge-required{% else %}badge-optional{% endif %}">{{ role | upper }}</span></div>
+      </div>
+    </div>
+    <div class="card" style="padding:2rem;">
+      <h3 style="font-family:var(--ff-head);color:var(--navy);margin-bottom:1rem;">Быстрые ссылки</h3>
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+        <a href="/schedule" class="btn btn-primary" style="font-size:.9rem;">📅 Расписание</a>
+        <a href="/disciplines" class="btn btn-primary" style="font-size:.9rem;">📚 Дисциплины</a>
+        <a href="/teachers" class="btn btn-primary" style="font-size:.9rem;">👨‍🏫 Преподаватели</a>
+        <a href="/logout" class="btn btn-outline" style="font-size:.9rem;background:var(--light);color:var(--navy);border-color:var(--border);">⎋ Выйти</a>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

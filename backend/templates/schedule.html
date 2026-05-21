@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Расписание — Кафедра ПОКС{% endblock %}
+{% block content %}
+<div class="page-hero">
+  <div class="breadcrumb"><a href="/">Главная</a> / Расписание</div>
+  <h1>Расписание занятий</h1>
+  <p>Актуальное расписание кафедры ПОКС на текущий семестр</p>
+</div>
+<section class="section">
+  <div class="container">
+    {% for day, lessons in schedule.items() %}
+    <div style="margin-bottom:2rem;">
+      <h3 style="font-family:var(--ff-head);color:var(--navy);font-size:1.3rem;margin-bottom:1rem;
+                 padding-left:.75rem;border-left:4px solid var(--gold);">{{ day }}</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Время</th><th>Дисциплина</th><th>Группа</th><th>Аудитория</th><th>Преподаватель</th></tr></thead>
+          <tbody>
+            {% for l in lessons %}
+            <tr>
+              <td class="mono" style="font-family:monospace;white-space:nowrap;">{{ l.time }}</td>
+              <td style="font-weight:500;">{{ l.subject }}</td>
+              <td><span class="badge badge-required">{{ l.group }}</span></td>
+              <td>{{ l.room }}</td>
+              <td style="color:var(--muted);">{{ l.teacher }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

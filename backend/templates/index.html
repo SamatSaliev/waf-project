@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Кафедра ПОКС — КГТУ им. И. Раззакова{% endblock %}
+
+{% block content %}
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-content">
+    <div class="hero-badge">🎓 Кафедра основана в {{ dept.founded }} году</div>
+    <h1>Кафедра «Программное Обеспечение Компьютерных Систем»</h1>
+    <p>Подготовка высококвалифицированных специалистов в области разработки программного обеспечения, информационной безопасности и современных IT-технологий</p>
+    <div class="hero-actions">
+      <a href="/about" class="btn btn-primary">О кафедре</a>
+      <a href="/disciplines" class="btn btn-outline">Учебные дисциплины</a>
+    </div>
+  </div>
+</section>
+
+<!-- Stats -->
+<div class="container" style="margin-top:-2rem;position:relative;z-index:10;">
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-num">30+</div>
+      <div class="stat-label">Лет опыта</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">{{ teachers|length }}</div>
+      <div class="stat-label">Преподавателей</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">12</div>
+      <div class="stat-label">Дисциплин</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">500+</div>
+      <div class="stat-label">Выпускников</div>
+    </div>
+  </div>
+</div>
+
+<!-- О кафедре краткое -->
+<section class="section">
+  <div class="container">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:center;">
+      <div>
+        <div class="section-header" style="text-align:left;margin-bottom:1.5rem;">
+          <h2>О нашей кафедре</h2>
+          <div class="divider" style="margin:0.75rem 0;"></div>
+        </div>
+        <p style="color:var(--muted);margin-bottom:1rem;">
+          Кафедра «Программное Обеспечение Компьютерных Систем» является одной из ведущих кафедр Института Информационных Технологий КГТУ им. И. Раззакова.
+        </p>
+        <p style="color:var(--muted);margin-bottom:1.5rem;">
+          Мы готовим специалистов, способных решать задачи в области разработки программного обеспечения, информационной безопасности и современных IT-технологий.
+        </p>
+        <a href="/about" class="btn btn-primary" style="font-size:.9rem;padding:.6rem 1.4rem;">Подробнее</a>
+      </div>
+      <div style="background:var(--light);border-radius:12px;padding:2rem;">
+        <div style="display:flex;flex-direction:column;gap:1rem;">
+          {% set features = [
+            ("🎯", "Современная программа обучения"),
+            ("💻", "Практические лаборатории"),
+            ("🔐", "Курсы по кибербезопасности"),
+            ("🚀", "Трудоустройство выпускников"),
+          ] %}
+          {% for icon, text in features %}
+          <div style="display:flex;align-items:center;gap:.75rem;">
+            <span style="font-size:1.4rem;">{{ icon }}</span>
+            <span style="font-weight:500;color:var(--navy);">{{ text }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Преподаватели -->
+<section class="section section-alt">
+  <div class="container">
+    <div class="section-header">
+      <h2>Наши преподаватели</h2>
+      <div class="divider"></div>
+      <p>Опытные специалисты с многолетним педагогическим и практическим опытом</p>
+    </div>
+    <div class="grid-4">
+      {% for t in teachers %}
+      <div class="card teacher-card">
+        <div class="teacher-avatar">{{ t.initials }}</div>
+        <h3>{{ t.name }}</h3>
+        <div class="position">{{ t.position }}</div>
+        <div class="subjects">{{ t.subjects | join(", ") }}</div>
+        <a href="/teacher/{{ t.id }}" class="btn-sm">Подробнее →</a>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="text-align:center;margin-top:2rem;">
+      <a href="/teachers" class="btn btn-primary">Все преподаватели</a>
+    </div>
+  </div>
+</section>
+
+<!-- Новости -->
+<section class="section">
+  <div class="container">
+    <div class="section-header">
+      <h2>Новости кафедры</h2>
+      <div class="divider"></div>
+      <p>Актуальные события и достижения</p>
+    </div>
+    <div class="grid-3">
+      {% for n in news %}
+      <div class="card news-card">
+        <span class="news-tag">{{ n.tag }}</span>
+        <div class="news-date">📅 {{ n.date }}</div>
+        <h3>{{ n.title }}</h3>
+        <p class="news-text" style="margin-top:.5rem;">{{ n.text[:120] }}...</p>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="text-align:center;margin-top:2rem;">
+      <a href="/news" class="btn btn-primary">Все новости</a>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section style="background:linear-gradient(135deg,var(--navy),var(--blue));padding:3.5rem 1.5rem;text-align:center;color:#fff;">
+  <h2 style="font-family:var(--ff-head);font-size:1.8rem;margin-bottom:.75rem;">Станьте студентом кафедры ПОКС</h2>
+  <p style="color:rgba(255,255,255,.8);margin-bottom:1.5rem;">Поступайте в КГТУ им. И. Раззакова и выбирайте специальность «Программное обеспечение»</p>
+  <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;">
+    <a href="/contacts" class="btn btn-primary">Связаться с нами</a>
+    <a href="/login"    class="btn btn-outline">Личный кабинет</a>
+  </div>
+</section>
+
+{% endblock %}

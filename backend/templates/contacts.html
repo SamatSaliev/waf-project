@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Контакты — Кафедра ПОКС{% endblock %}
+{% block content %}
+<div class="page-hero">
+  <div class="breadcrumb"><a href="/">Главная</a> / Контакты</div>
+  <h1>Контакты</h1>
+  <p>Свяжитесь с нами любым удобным способом</p>
+</div>
+<section class="section">
+  <div class="container">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:2.5rem;">
+      <div>
+        <div class="card" style="padding:2rem;margin-bottom:1.5rem;">
+          <h3 style="font-family:var(--ff-head);color:var(--navy);margin-bottom:1.25rem;">Наши контакты</h3>
+          {% set contacts = [
+            ("📍", "Адрес", dept.address + ", Кыргызстан"),
+            ("📞", "Телефон", dept.phone),
+            ("✉️", "Email", dept.email),
+            ("🕐", "Режим работы", "Пн–Пт: 08:00–17:00"),
+          ] %}
+          {% for icon, label, val in contacts %}
+          <div style="display:flex;gap:1rem;margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px solid var(--border);">
+            <span style="font-size:1.3rem;">{{ icon }}</span>
+            <div>
+              <div style="font-size:.78rem;color:var(--muted);font-weight:600;">{{ label }}</div>
+              <div style="color:var(--navy);">{{ val }}</div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="card" style="padding:2rem;">
+        <h3 style="font-family:var(--ff-head);color:var(--navy);margin-bottom:1.25rem;">Написать нам</h3>
+        <form method="post" action="/contacts">
+          <div class="form-group"><label>Ваше имя</label><input class="form-control" type="text" placeholder="Введите ваше имя" required></div>
+          <div class="form-group"><label>Email</label><input class="form-control" type="email" placeholder="example@mail.com" required></div>
+          <div class="form-group"><label>Тема</label><input class="form-control" type="text" placeholder="Тема обращения"></div>
+          <div class="form-group"><label>Сообщение</label><textarea class="form-control" rows="4" placeholder="Ваше сообщение..." required></textarea></div>
+          <button type="submit" class="btn btn-primary" style="width:100%;">Отправить сообщение</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

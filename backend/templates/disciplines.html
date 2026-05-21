@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Дисциплины — Кафедра ПОКС{% endblock %}
+{% block content %}
+<div class="page-hero">
+  <div class="breadcrumb"><a href="/">Главная</a> / Дисциплины</div>
+  <h1>Учебные дисциплины</h1>
+  <p>Актуальный учебный план кафедры ПОКС</p>
+</div>
+<section class="section">
+  <div class="container">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Дисциплина</th><th>Семестр</th><th>Кредиты</th><th>Тип</th></tr></thead>
+        <tbody>
+          {% for d in disciplines %}
+          <tr>
+            <td style="font-weight:500;">{{ d.name }}</td>
+            <td>{{ d.semester }}</td>
+            <td style="text-align:center;"><strong>{{ d.credits }}</strong></td>
+            <td><span class="badge {% if d.type=='Обязательная' %}badge-required{% else %}badge-optional{% endif %}">{{ d.type }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -155,3 +155,96 @@ async def get_unique_ips(db_path: str, limit: int = 100) -> list[dict]:
         ) as cur:
             rows = await cur.fetchall()
     return [dict(r) for r in rows]
+
+
+async def get_chart_data(db_path: str) -> dict:
+    """Возвращает данные для графиков дашборда."""
+    async with aiosqlite.connect(db_path) as db:
+
+        # 1. Запросы по часам за последние 24 часа (block/detect/allow)
+        async with db.execute("""
+            SELECT
+                strftime('%H:00', timestamp) as hour,
+                action,
+                COUNT(*) as cnt
+            FROM events
+            WHERE timestamp >= datetime('now', '-24 hours')
+            GROUP BY hour, action
+            ORDER BY hour
+        """) as cur:
+            hourly_rows = await cur.fetchall()
+
+        # 2. Топ-10 правил по срабатываниям
+        async with db.execute("""
+            SELECT rule_name, COUNT(*) as cnt
+            FROM events
+            WHERE action IN ('block','detect')
+              AND rule_name IS NOT NULL
+            GROUP BY rule_name
+            ORDER BY cnt DESC
+            LIMIT 10
+        """) as cur:
+            rules_rows = await cur.fetchall()
+
+        # 3. Топ-5 атакующих IP
+        async with db.execute("""
+            SELECT client_ip, COUNT(*) as cnt
+            FROM events
+            WHERE action IN ('block','detect')
+              AND client_ip IS NOT NULL
+            GROUP BY client_ip
+            ORDER BY cnt DESC
+            LIMIT 5
+        """) as cur:
+            ips_rows = await cur.fetchall()
+
+        # 4. События по дням за последние 7 дней
+        async with db.execute("""
+            SELECT
+                strftime('%d.%m', timestamp) as day,
+                action,
+                COUNT(*) as cnt
+            FROM events
+            WHERE timestamp >= datetime('now', '-7 days')
+            GROUP BY day, action
+            ORDER BY day
+        """) as cur:
+            daily_rows = await cur.fetchall()
+
+    # Собираем почасовые данные
+    hours = [f"{h:02d}:00" for h in range(24)]
+    hourly = {h: {"block": 0, "detect": 0, "allow": 0} for h in hours}
+    for hour, action, cnt in hourly_rows:
+        if hour in hourly and action in ("block", "detect", "allow"):
+            hourly[hour][action] = cnt
+
+    # Собираем дневные данные
+    days_map: dict = {}
+    for day, action, cnt in daily_rows:
+        if day not in days_map:
+            days_map[day] = {"block": 0, "detect": 0, "allow": 0}
+        if action in ("block", "detect", "allow"):
+            days_map[day][action] = cnt
+
+    return {
+        "hourly": {
+            "labels": hours,
+            "block":  [hourly[h]["block"]  for h in hours],
+            "detect": [hourly[h]["detect"] for h in hours],
+            "allow":  [hourly[h]["allow"]  for h in hours],
+        },
+        "rules": {
+            "labels": [r[0] for r in rules_rows],
+            "values": [r[1] for r in rules_rows],
+        },
+        "top_ips": {
+            "labels": [r[0] for r in ips_rows],
+            "values": [r[1] for r in ips_rows],
+        },
+        "daily": {
+            "labels": list(days_map.keys()),
+            "block":  [days_map[d]["block"]  for d in days_map],
+            "detect": [days_map[d]["detect"] for d in days_map],
+            "allow":  [days_map[d]["allow"]  for d in days_map],
+        },
+    }
