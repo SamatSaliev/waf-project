@@ -423,6 +423,15 @@ async def api_geo(_: str = Depends(no_auth)):
     return {"ips": ips}
 
 
+
+@app.api_route(
+    "/static/{path:path}",
+    methods=["GET"],
+    tags=["proxy"],
+)
+async def proxy_static(request: Request, path: str):
+    """Проксирует статические файлы backend."""
+    parsed = await parse_request(request)
 # ═══════════════════════════════════════════════════════════════════════════════
 # Reverse Proxy (catch-all)
 # ═══════════════════════════════════════════════════════════════════════════════
