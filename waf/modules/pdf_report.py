@@ -1,11 +1,13 @@
 """
 pdf_report.py — генератор PDF отчёта об эффективности WAF.
-Использует reportlab для создания профессионального отчёта.
+Использует reportlab + шрифт DejaVu для поддержки кириллицы.
 """
 
 from __future__ import annotations
 
 import io
+import os
+import urllib.request
 from datetime import datetime, timezone
 from typing import Any
 
@@ -14,10 +16,39 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     HRFlowable, PageBreak, Paragraph, SimpleDocTemplate,
     Spacer, Table, TableStyle,
 )
+
+# ── Регистрация шрифта DejaVu с поддержкой кириллицы ─────────────────────────
+_FONT_DIR  = "/tmp/waf_fonts"
+_FONT_URLS = {
+    "DejaVu":      "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf",
+    "DejaVu-Bold": "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans-Bold.ttf",
+}
+
+def _ensure_fonts():
+    os.makedirs(_FONT_DIR, exist_ok=True)
+    for name, url in _FONT_URLS.items():
+        path = os.path.join(_FONT_DIR, f"{name}.ttf")
+        if not os.path.exists(path):
+            try:
+                urllib.request.urlretrieve(url, path)
+            except Exception:
+                # Fallback — используем встроенный Helvetica без кириллицы
+                return False
+        try:
+            pdfmetrics.registerFont(TTFont(name, path))
+        except Exception:
+            return False
+    return True
+
+_CYRILLIC = _ensure_fonts()
+_FONT      = "DejaVu"      if _CYRILLIC else _FONT
+_FONT_BOLD = "DejaVu-Bold" if _CYRILLIC else _FONT_BOLD
 
 # ── Цвета ─────────────────────────────────────────────────────────────────────
 NAVY    = colors.HexColor("#0a2342")
@@ -37,30 +68,30 @@ def _styles():
     return {
         "title": ParagraphStyle(
             "title", fontSize=22, textColor=WHITE, alignment=TA_CENTER,
-            fontName="Helvetica-Bold", spaceAfter=4,
+            fontName=_FONT_BOLD, spaceAfter=4,
         ),
         "subtitle": ParagraphStyle(
             "subtitle", fontSize=11, textColor=colors.HexColor("#c9d1d9"),
-            alignment=TA_CENTER, fontName="Helvetica", spaceAfter=2,
+            alignment=TA_CENTER, fontName=_FONT, spaceAfter=2,
         ),
         "section": ParagraphStyle(
-            "section", fontSize=13, textColor=NAVY, fontName="Helvetica-Bold",
+            "section", fontSize=13, textColor=NAVY, fontName=_FONT_BOLD,
             spaceBefore=14, spaceAfter=6,
         ),
         "body": ParagraphStyle(
             "body", fontSize=9, textColor=colors.HexColor("#1a1a2e"),
-            fontName="Helvetica", spaceAfter=3, leading=13,
+            fontName=_FONT, spaceAfter=3, leading=13,
         ),
         "muted": ParagraphStyle(
-            "muted", fontSize=8, textColor=GRAY, fontName="Helvetica",
+            "muted", fontSize=8, textColor=GRAY, fontName=_FONT,
             alignment=TA_CENTER,
         ),
         "stat_num": ParagraphStyle(
-            "stat_num", fontSize=26, textColor=NAVY, fontName="Helvetica-Bold",
+            "stat_num", fontSize=26, textColor=NAVY, fontName=_FONT_BOLD,
             alignment=TA_CENTER, spaceAfter=2,
         ),
         "stat_label": ParagraphStyle(
-            "stat_label", fontSize=8, textColor=GRAY, fontName="Helvetica",
+            "stat_label", fontSize=8, textColor=GRAY, fontName=_FONT,
             alignment=TA_CENTER, spaceAfter=0,
         ),
     }
@@ -135,7 +166,7 @@ def generate_pdf_report(
     cfg_table.setStyle(TableStyle([
         ("BACKGROUND",    (0,0), (-1,0),  NAVY),
         ("TEXTCOLOR",     (0,0), (-1,0),  WHITE),
-        ("FONTNAME",      (0,0), (-1,0),  "Helvetica-Bold"),
+        ("FONTNAME",      (0,0), (-1,0),  _FONT_BOLD),
         ("FONTSIZE",      (0,0), (-1,-1), 9),
         ("BACKGROUND",    (0,1), (-1,-1), LIGHT),
         ("ROWBACKGROUNDS",(0,1), (-1,-1), [WHITE, LIGHT]),
@@ -200,14 +231,14 @@ def generate_pdf_report(
     m_table.setStyle(TableStyle([
         ("BACKGROUND",    (0,0), (-1,0),  BLUE),
         ("TEXTCOLOR",     (0,0), (-1,0),  WHITE),
-        ("FONTNAME",      (0,0), (-1,0),  "Helvetica-Bold"),
+        ("FONTNAME",      (0,0), (-1,0),  _FONT_BOLD),
         ("FONTSIZE",      (0,0), (-1,-1), 9),
         ("ROWBACKGROUNDS",(0,1), (-1,-1), [WHITE, LIGHT]),
         ("GRID",          (0,0), (-1,-1), 0.5, colors.HexColor("#e0ddd6")),
         ("TOPPADDING",    (0,0), (-1,-1), 5),
         ("BOTTOMPADDING", (0,0), (-1,-1), 5),
         ("LEFTPADDING",   (0,0), (-1,-1), 8),
-        ("FONTNAME",      (0,1), (1,-1),  "Helvetica-Bold"),
+        ("FONTNAME",      (0,1), (1,-1),  _FONT_BOLD),
         ("TEXTCOLOR",     (1,1), (1,-1),  BLUE),
     ]))
     story.append(m_table)
@@ -231,7 +262,7 @@ def generate_pdf_report(
         r_table.setStyle(TableStyle([
             ("BACKGROUND",    (0,0), (-1,0),  NAVY),
             ("TEXTCOLOR",     (0,0), (-1,0),  WHITE),
-            ("FONTNAME",      (0,0), (-1,0),  "Helvetica-Bold"),
+            ("FONTNAME",      (0,0), (-1,0),  _FONT_BOLD),
             ("FONTSIZE",      (0,0), (-1,-1), 8),
             ("ROWBACKGROUNDS",(0,1), (-1,-1), [WHITE, LIGHT]),
             ("GRID",          (0,0), (-1,-1), 0.5, colors.HexColor("#e0ddd6")),
@@ -240,7 +271,7 @@ def generate_pdf_report(
             ("LEFTPADDING",   (0,0), (-1,-1), 6),
             ("ALIGN",         (2,0), (-1,-1), "CENTER"),
             ("TEXTCOLOR",     (2,1), (2,-1),  RED),
-            ("FONTNAME",      (2,1), (2,-1),  "Helvetica-Bold"),
+            ("FONTNAME",      (2,1), (2,-1),  _FONT_BOLD),
         ]))
         story.append(r_table)
         story.append(Spacer(1, 6*mm))
@@ -262,7 +293,7 @@ def generate_pdf_report(
         ip_table.setStyle(TableStyle([
             ("BACKGROUND",    (0,0), (-1,0),  NAVY),
             ("TEXTCOLOR",     (0,0), (-1,0),  WHITE),
-            ("FONTNAME",      (0,0), (-1,0),  "Helvetica-Bold"),
+            ("FONTNAME",      (0,0), (-1,0),  _FONT_BOLD),
             ("FONTSIZE",      (0,0), (-1,-1), 9),
             ("ROWBACKGROUNDS",(0,1), (-1,-1), [WHITE, LIGHT]),
             ("GRID",          (0,0), (-1,-1), 0.5, colors.HexColor("#e0ddd6")),
@@ -271,7 +302,7 @@ def generate_pdf_report(
             ("LEFTPADDING",   (0,0), (-1,-1), 6),
             ("ALIGN",         (2,0), (-1,-1), "CENTER"),
             ("TEXTCOLOR",     (2,1), (2,-1),  RED),
-            ("FONTNAME",      (2,1), (2,-1),  "Helvetica-Bold"),
+            ("FONTNAME",      (2,1), (2,-1),  _FONT_BOLD),
         ]))
         story.append(ip_table)
         story.append(Spacer(1, 6*mm))
@@ -306,7 +337,7 @@ def generate_pdf_report(
         inc_style = TableStyle([
             ("BACKGROUND",    (0,0), (-1,0),  NAVY),
             ("TEXTCOLOR",     (0,0), (-1,0),  WHITE),
-            ("FONTNAME",      (0,0), (-1,0),  "Helvetica-Bold"),
+            ("FONTNAME",      (0,0), (-1,0),  _FONT_BOLD),
             ("FONTSIZE",      (0,0), (-1,-1), 7.5),
             ("ROWBACKGROUNDS",(0,1), (-1,-1), [WHITE, LIGHT]),
             ("GRID",          (0,0), (-1,-1), 0.5, colors.HexColor("#e0ddd6")),
@@ -314,14 +345,14 @@ def generate_pdf_report(
             ("BOTTOMPADDING", (0,0), (-1,-1), 4),
             ("LEFTPADDING",   (0,0), (-1,-1), 5),
             ("ALIGN",         (2,0), (-1,-1), "CENTER"),
-            ("FONTNAME",      (0,1), (0,-1),  "Helvetica-Bold"),
+            ("FONTNAME",      (0,1), (0,-1),  _FONT_BOLD),
         ])
 
         for row_idx, inc in enumerate(incidents[:30], 1):
             sev = inc.get("severity", "").upper()
             color = sev_colors.get(sev, GRAY)
             inc_style.add("TEXTCOLOR", (2, row_idx), (2, row_idx), color)
-            inc_style.add("FONTNAME",  (2, row_idx), (2, row_idx), "Helvetica-Bold")
+            inc_style.add("FONTNAME",  (2, row_idx), (2, row_idx), _FONT_BOLD)
 
         inc_table.setStyle(inc_style)
         story.append(inc_table)
