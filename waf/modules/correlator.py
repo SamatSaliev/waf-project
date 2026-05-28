@@ -190,6 +190,13 @@ class Correlator:
                 incident["group_value"],
                 incident["event_count"],
             )
+            # Telegram уведомление
+            try:
+                from modules.telegram_notify import TelegramNotifier
+                tg = TelegramNotifier()
+                asyncio.create_task(tg.send_incident(incident))
+            except Exception as tg_err:
+                logger.error("Telegram error: %s", tg_err)
         except Exception as e:
             logger.error("Ошибка сохранения инцидента: %s", e)
 

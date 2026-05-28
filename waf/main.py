@@ -35,6 +35,7 @@ from modules.correlator import (
     Correlator, get_recent_incidents, update_incident_status,
 )
 from modules.ti_sync import TISync
+from modules.telegram_notify import TelegramNotifier
 
 # ── Конфигурация ──────────────────────────────────────────────────────────────
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:5000")
@@ -42,6 +43,28 @@ WAF_MODE    = os.getenv("WAF_MODE", "blocking")   # меняется через 
 DB_PATH     = os.getenv("DB_PATH", "/data/waf.db")
 LOG_PATH    = os.getenv("LOG_PATH", "/data/events.jsonl")
 RATE_LIMIT  = int(os.getenv("RATE_LIMIT", "60"))
+
+# IP whitelist для /waf-admin (через запятую, пустая строка = все разрешены)
+_whitelist_raw   = os.getenv("ADMIN_IP_WHITELIST", "")
+ADMIN_WHITELIST  = [ip.strip() for ip in _whitelist_raw.split(",") if ip.strip()]
+
+
+def check_admin_ip(request: Request) -> bool:
+    """Проверяет что IP клиента разрешён для доступа к /waf-admin."""
+    if not ADMIN_WHITELIST:
+        return True  # whitelist не задан — разрешаем всем
+    client_ip = request.client.host if request.client else ""
+    return client_ip in ADMIN_WHITELIST
+
+
+def require_admin_ip(request: Request) -> None:
+    """FastAPI dependency — блокирует доступ если IP не в whitelist."""
+    if not check_admin_ip(request):
+        client_ip = request.client.host if request.client else "unknown"
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Доступ запрещён. IP {client_ip} не в списке разрешённых.",
+        )
 
 # ── Модули ────────────────────────────────────────────────────────────────────
 rule_engine     = RuleEngine()
@@ -51,6 +74,7 @@ rate_limiter    = RateLimiter(max_requests=RATE_LIMIT, window_seconds=60)
 ip_filter       = IpFilter(db_path=DB_PATH)
 correlator      = Correlator(db_path=DB_PATH)
 ti_sync         = TISync(ip_filter=ip_filter, db_path=DB_PATH)
+tg              = TelegramNotifier()
 
 templates = Jinja2Templates(directory="templates")
 os.makedirs("static", exist_ok=True)
@@ -62,6 +86,7 @@ async def lifespan(app: FastAPI):
     await rule_engine.load_rules(DB_PATH)
     await ip_filter.load()
     await ti_sync.start()
+    await tg.send_startup(WAF_MODE, RATE_LIMIT)
     print(f"\n{'='*60}")
     print(f"  WAF | Режим: {WAF_MODE} | Rate limit: {RATE_LIMIT}/min")
     print(f"  API Token: {API_TOKEN}")
@@ -72,6 +97,23 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Python WAF — Этап 5", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.middleware("http")
+async def admin_ip_whitelist_middleware(request: Request, call_next):
+    """Блокирует доступ к /waf-admin и /waf-login если IP не в whitelist."""
+    path = request.url.path
+    if ADMIN_WHITELIST and (path.startswith("/waf-admin") or path.startswith("/waf-login")):
+        client_ip = request.client.host if request.client else ""
+        if client_ip not in ADMIN_WHITELIST:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "error":   "Forbidden",
+                    "message": f"Доступ к панели администратора запрещён. IP {client_ip} не разрешён.",
+                },
+            )
+    return await call_next(request)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -409,6 +451,30 @@ async def api_ip_remove(ip: str, _: str = Depends(require_token)):
     await ip_filter.remove_ip(ip)
 
 
+@app.get("/api/v1/report/pdf", tags=["api-report"])
+async def api_pdf_report(_: str = Depends(no_auth)):
+    """Генерирует и скачивает PDF отчёт об эффективности WAF."""
+    from modules.pdf_report import generate_pdf_report
+    stats      = await get_events_stats(DB_PATH)
+    chart_data = await get_chart_data(DB_PATH)
+    incidents  = await get_recent_incidents(DB_PATH, limit=50)
+
+    pdf_bytes = generate_pdf_report(
+        stats      = stats,
+        chart_data = chart_data,
+        incidents  = incidents,
+        waf_mode   = WAF_MODE,
+        rate_limit = RATE_LIMIT,
+    )
+
+    filename = f"waf_report_{_today()}.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.get("/api/v1/charts", tags=["api-charts"])
 async def api_charts(_: str = Depends(no_auth)):
     """Данные для графиков дашборда."""
@@ -423,15 +489,6 @@ async def api_geo(_: str = Depends(no_auth)):
     return {"ips": ips}
 
 
-
-@app.api_route(
-    "/static/{path:path}",
-    methods=["GET"],
-    tags=["proxy"],
-)
-async def proxy_static(request: Request, path: str):
-    """Проксирует статические файлы backend."""
-    parsed = await parse_request(request)
 # ═══════════════════════════════════════════════════════════════════════════════
 # Reverse Proxy (catch-all)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -466,6 +523,7 @@ async def waf_proxy(request: Request, path: str):
             "severity": "medium", "target": "ip", "matched": client_ip,
         })
         await correlator.process_event({**parsed, "action": "block", "rule_name": "Rate Limit Exceeded"})
+        asyncio.create_task(tg.send_rate_limit(client_ip, RATE_LIMIT))
         return JSONResponse(
             status_code=429,
             headers={"Retry-After": "60", "X-RateLimit-Limit": str(RATE_LIMIT)},

@@ -12,14 +12,21 @@ services:
       - DB_PATH=/data/waf.db
       - LOG_PATH=/data/events.jsonl
       - RATE_LIMIT=60
-      - TZ=Asia/Bishkek
-      - WAF_API_TOKEN=OQVK9sxmqjtc60KkAI$TOov0TO$Q!YTY
+      - WAF_API_TOKEN=my-secret-token-change-me
       - DASHBOARD_PASSWORD=waf-admin-2024
       # ── Threat Intelligence (POKS TI) ──────────────────────
       - TI_ENABLED=true
-      - TI_BASE_URL=http://10.135.126.10:8080
+      - TI_BASE_URL=http://TI_IP_ADDRESS:8000
       - TI_SYNC_INTERVAL=300
       - TI_SCORE_THRESHOLD=50
+      # ── Telegram уведомления ────────────────────────────────
+      - TG_ENABLED=true
+      - TG_BOT_TOKEN=8117519145:AAF9tLwawJC-KYbcQd2EeTr6js3isGMxDKE
+      - TG_CHAT_ID=-5209220154
+      # ── IP Whitelist для /waf-admin ─────────────────────────
+      # Оставьте пустым чтобы разрешить всем, или укажите IP через запятую:
+      # - ADMIN_IP_WHITELIST=10.135.125.10,10.11.10.3,172.18.0.1
+      - ADMIN_IP_WHITELIST=
     volumes:
       - waf_data:/data
     depends_on:
