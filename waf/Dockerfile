@@ -2,8 +2,9 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Устанавливаем openssl для генерации сертификата
-RUN apt-get update && apt-get install -y --no-install-recommends openssl \
+# Устанавливаем openssl и шрифты DejaVu для PDF с кириллицей
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssl fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 # Генерируем самоподписанный сертификат на 365 дней

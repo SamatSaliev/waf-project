@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import io
 import os
-import urllib.request
 from datetime import datetime, timezone
 from typing import Any
 
@@ -24,29 +23,23 @@ from reportlab.platypus import (
 )
 
 # ── Регистрация шрифта DejaVu с поддержкой кириллицы ─────────────────────────
-_FONT_DIR  = "/tmp/waf_fonts"
-_FONT_URLS = {
-    "DejaVu":      "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf",
-    "DejaVu-Bold": "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans-Bold.ttf",
+# Системные пути к шрифтам DejaVu (устанавливаются через apt fonts-dejavu-core)
+_FONT_PATHS = {
+    "DejaVu":      "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "DejaVu-Bold": "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
 }
 
-def _ensure_fonts():
-    os.makedirs(_FONT_DIR, exist_ok=True)
-    for name, url in _FONT_URLS.items():
-        path = os.path.join(_FONT_DIR, f"{name}.ttf")
+def _ensure_fonts() -> bool:
+    for name, path in _FONT_PATHS.items():
         if not os.path.exists(path):
-            try:
-                urllib.request.urlretrieve(url, path)
-            except Exception:
-                # Fallback — используем встроенный Helvetica без кириллицы
-                return False
+            return False
         try:
             pdfmetrics.registerFont(TTFont(name, path))
         except Exception:
             return False
     return True
 
-_CYRILLIC = _ensure_fonts()
+_CYRILLIC  = _ensure_fonts()
 _FONT      = "DejaVu"      if _CYRILLIC else "Helvetica"
 _FONT_BOLD = "DejaVu-Bold" if _CYRILLIC else "Helvetica-Bold"
 
