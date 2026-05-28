@@ -47,8 +47,8 @@ def _ensure_fonts():
     return True
 
 _CYRILLIC = _ensure_fonts()
-_FONT      = "DejaVu"      if _CYRILLIC else _FONT
-_FONT_BOLD = "DejaVu-Bold" if _CYRILLIC else _FONT_BOLD
+_FONT      = "DejaVu"      if _CYRILLIC else "Helvetica"
+_FONT_BOLD = "DejaVu-Bold" if _CYRILLIC else "Helvetica-Bold"
 
 # ── Цвета ─────────────────────────────────────────────────────────────────────
 NAVY    = colors.HexColor("#0a2342")
