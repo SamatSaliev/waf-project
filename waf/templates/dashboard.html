@@ -1,4 +1,16 @@
 <!DOCTYPE html>
+{% macro sort_th(label, key, current_sort, current_dir, action_filter, page_var, sort_param, dir_param, extra='') %}
+{% set is_active = (current_sort == key) %}
+{% set new_dir = 'asc' if (is_active and current_dir == 'desc') else 'desc' %}
+{% set arrow = (' ▲' if current_dir == 'asc' else ' ▼') if is_active else '' %}
+<th>
+  <a href="?page=1&action={{ action_filter }}&{{ sort_param }}={{ key }}&{{ dir_param }}={{ new_dir }}{{ extra }}&tab=events"
+     style="color:inherit;text-decoration:none;display:flex;align-items:center;gap:.2rem;white-space:nowrap;overflow:hidden;{% if is_active %}color:var(--accent);{% endif %}"
+     title="Сортировать по {{ label }}">
+    <span style="overflow:hidden;text-overflow:ellipsis;">{{ label }}</span><span style="font-size:.65rem;opacity:.7;display:inline-block;width:1.1em;flex-shrink:0;text-align:center;">{{ arrow if is_active else '⇅' }}</span>
+  </a>
+</th>
+{% endmacro %}
 <html lang="ru">
 <head>
   <meta charset="UTF-8"/>
@@ -95,7 +107,8 @@
 
     .mono{font-family:var(--font);font-size:.76rem;}
     .muted{color:var(--muted);}
-    .trunc{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .trunc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
+    #eventsTable td, #eventsTable th{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
     /* Pagination */
     #pagination{display:flex;align-items:center;gap:.3rem;padding:.7rem 0;flex-wrap:wrap;}
@@ -107,7 +120,9 @@
 
     /* Incident cards */
     .incident-card{background:var(--surface);border:1px solid var(--border);
-                   border-radius:8px;padding:1rem;margin-bottom:.75rem;}
+                   border-radius:8px;padding:1rem;margin-bottom:.75rem;cursor:pointer;
+                   transition:border-color .15s, transform .1s;}
+    .incident-card:hover{border-color:var(--accent);transform:translateY(-1px);}
     .incident-card.critical{border-color:var(--critical);box-shadow:0 0 8px rgba(255,107,107,.15);}
     .incident-card.high{border-color:var(--danger);}
     .incident-header{display:flex;align-items:center;gap:.75rem;margin-bottom:.5rem;}
@@ -116,6 +131,48 @@
     .incident-actions{margin-left:auto;display:flex;gap:.4rem;}
     .btn-resolve{padding:.2rem .6rem;border-radius:3px;border:1px solid var(--ok);
                  background:none;color:var(--ok);font-family:var(--font);font-size:.72rem;cursor:pointer;}
+
+    /* Incident detail modal */
+    .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);
+                   z-index:1000;align-items:center;justify-content:center;padding:1.5rem;}
+    .modal-overlay.open{display:flex;}
+    .modal-box{background:var(--surface);border:1px solid var(--border);border-radius:10px;
+               width:100%;max-width:760px;max-height:88vh;overflow-y:auto;
+               box-shadow:0 12px 40px rgba(0,0,0,.5);animation:modalIn .15s ease;}
+    @keyframes modalIn{from{opacity:0;transform:scale(.97);}to{opacity:1;transform:scale(1);}}
+    .modal-header{display:flex;align-items:center;gap:.75rem;padding:1rem 1.25rem;
+                  border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--surface);}
+    .modal-header h3{font-size:1rem;margin:0;flex:1;}
+    .modal-close{background:none;border:none;color:var(--muted);font-size:1.3rem;
+                 cursor:pointer;line-height:1;padding:0 .25rem;}
+    .modal-close:hover{color:var(--text);}
+    .modal-body{padding:1.25rem;}
+    .modal-section{margin-bottom:1.25rem;}
+    .modal-section h4{font-size:.78rem;color:var(--muted);text-transform:uppercase;
+                      letter-spacing:.05em;margin:0 0 .6rem;font-weight:600;}
+    .modal-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.6rem;}
+    .modal-stat{background:var(--bg);border:1px solid var(--border);border-radius:6px;
+                padding:.5rem .7rem;}
+    .modal-stat .lbl{font-size:.68rem;color:var(--muted);text-transform:uppercase;}
+    .modal-stat .val{font-size:.9rem;font-weight:600;margin-top:.15rem;word-break:break-all;}
+    .modal-events{max-height:240px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;}
+    .modal-events table{width:100%;font-size:.72rem;border-collapse:collapse;}
+    .modal-events th{position:sticky;top:0;background:var(--bg);padding:.4rem .5rem;
+                     text-align:left;color:var(--muted);border-bottom:1px solid var(--border);}
+    .modal-events td{padding:.35rem .5rem;border-bottom:1px solid var(--border);}
+    .attack-bar{display:flex;align-items:center;gap:.5rem;margin-bottom:.35rem;font-size:.78rem;}
+    .attack-bar .name{flex:1;color:var(--text);}
+    .attack-bar .track{flex:2;background:var(--bg);border-radius:3px;height:8px;overflow:hidden;}
+    .attack-bar .fill{height:100%;background:var(--danger);border-radius:3px;}
+    .attack-bar .cnt{width:2.5rem;text-align:right;color:var(--muted);}
+    .siem-json{background:var(--bg);border:1px solid var(--border);border-radius:6px;
+               padding:.75rem;font-size:.7rem;font-family:var(--font);white-space:pre-wrap;
+               word-break:break-all;max-height:220px;overflow-y:auto;color:var(--text);}
+    .copy-btn{padding:.2rem .6rem;border-radius:3px;border:1px solid var(--border);
+              background:none;color:var(--muted);font-family:var(--font);font-size:.7rem;
+              cursor:pointer;float:right;margin-top:-.4rem;}
+    .copy-btn:hover{border-color:var(--accent);color:var(--accent);}
+    .modal-loading{text-align:center;padding:3rem;color:var(--muted);}
     .btn-resolve:hover{background:#122117;}
     .btn-fp{padding:.2rem .6rem;border-radius:3px;border:1px solid var(--muted);
             background:none;color:var(--muted);font-family:var(--font);font-size:.72rem;cursor:pointer;}
@@ -211,13 +268,14 @@
   <div class="stat"><div class="stat-v c-accent">{{ stats.total }}</div><div class="stat-l">Всего событий</div></div>
   <div class="stat"><div class="stat-v c-block">{{ stats.block }}</div><div class="stat-l">Заблокировано</div></div>
   <div class="stat"><div class="stat-v c-detect">{{ stats.detect }}</div><div class="stat-l">Обнаружено</div></div>
-  <div class="stat"><div class="stat-v c-allow">{{ stats.allow }}</div><div class="stat-l">Пропущено</div></div>
+  <div class="stat"><div class="stat-v c-allow">{{ stats.allow }}</div><div class="stat-l">Разрешено</div></div>
   <div class="stat"><div class="stat-v c-critical">{{ open_inc }}</div><div class="stat-l">Инцидентов</div></div>
-  <div class="stat"><div class="stat-v" style="color:var(--warn)">{{ rules|length }}</div><div class="stat-l">Правил</div></div>
+  <div class="stat"><div class="stat-v" style="color:var(--text)">{{ rules|length }}</div><div class="stat-l">Правил</div></div>
 </div>
 
 <nav>
-  <div class="tab active" onclick="showTab('events',this)">События</div>
+  <div class="tab active" onclick="showTab('overview',this)">🏠 Обзор</div>
+  <div class="tab" onclick="showTab('events',this)">События</div>
   <div class="tab" onclick="showTab('charts',this)">📊 Графики</div>
   <div class="tab" onclick="showTab('incidents',this)">
     Инциденты
@@ -225,25 +283,141 @@
   </div>
   <div class="tab" onclick="showTab('map',this)" id="tab-map">🌍 Карта атак</div>
   <div class="tab" onclick="showTab('rules',this)">Правила</div>
-  <div class="tab" onclick="showTab('iplist',this)">IP Management</div>
+  <div class="tab" onclick="showTab('iplist',this)">IP-адреса</div>
   <div class="tab" onclick="showTab('api',this)">API Docs</div>
 </nav>
 
+<!-- ══ OVERVIEW ══ -->
+<div id="page-overview" class="page active">
+  <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:1.25rem;margin-top:.5rem;">
+
+    <!-- Левая колонка: график активности -->
+    <div style="display:flex;flex-direction:column;gap:1.25rem;">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.25rem;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
+          <div style="font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">
+            Активность за последние 24 часа
+          </div>
+          <a href="#" onclick="showTab('charts', document.querySelector('.tab:nth-child(3)')); return false;"
+             style="font-size:.72rem;color:var(--accent);text-decoration:none;">Все графики →</a>
+        </div>
+        <canvas id="overviewChart" height="110"></canvas>
+      </div>
+
+      <!-- Топ правил -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.25rem;">
+        <div style="font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:1rem;">
+          Топ сработавших правил (24ч)
+        </div>
+        <canvas id="overviewRulesChart" height="130"></canvas>
+      </div>
+    </div>
+
+    <!-- Правая колонка: недавние/критические инциденты -->
+    <div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;">
+        <div style="font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;">
+          Недавние инциденты
+        </div>
+        <a href="#" onclick="showTab('incidents', document.querySelector('.tab:nth-child(4)')); return false;"
+           style="font-size:.72rem;color:var(--accent);text-decoration:none;">Все инциденты →</a>
+      </div>
+
+      {% set overview_incidents = (incidents | selectattr("status","eq","open") | list)[:5] %}
+      {% if overview_incidents %}
+        {% for inc in overview_incidents %}
+        <div class="incident-card {{ inc.severity }}" style="padding:.75rem 1rem;margin-bottom:.6rem;"
+             onclick="openIncidentModal({{ inc.id }})">
+          <div class="incident-header" style="margin-bottom:.25rem;">
+            <span class="pill p-{{ inc.severity }}">{{ inc.severity|upper }}</span>
+            <span class="incident-title" style="font-size:.82rem;">{{ inc.name }}</span>
+          </div>
+          <div class="incident-meta" style="font-size:.7rem;">
+            <span>🕐 {{ inc.timestamp[:19].replace("T"," ") }}</span>
+            <span>📍 {{ inc.group_value }}</span>
+            <span>📊 {{ inc.event_count }} событий</span>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="empty" style="padding:2rem 1rem;text-align:center;color:var(--ok);border:1px solid var(--border);border-radius:8px;background:var(--surface);">
+          ✓ Открытых инцидентов нет
+        </div>
+      {% endif %}
+
+      {% if open_inc > 5 %}
+      <div style="text-align:center;margin-top:.5rem;">
+        <a href="#" onclick="showTab('incidents', document.querySelector('.tab:nth-child(4)')); return false;"
+           style="font-size:.75rem;color:var(--accent);text-decoration:none;">
+          + ещё {{ open_inc - 5 }} открытых инцидентов
+        </a>
+      </div>
+      {% endif %}
+
+      <!-- Быстрая статистика -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.25rem;margin-top:1.25rem;">
+        <div style="font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:1rem;">
+          Сводка
+        </div>
+        <div style="display:flex;flex-direction:column;gap:.6rem;font-size:.82rem;">
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:var(--muted);">Режим работы</span>
+            <span style="font-weight:600;{% if mode=='blocking' %}color:var(--danger);{% else %}color:var(--warn);{% endif %}">{{ mode|upper }}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:var(--muted);">Rate limit</span>
+            <span style="font-weight:600;">{{ rate_limit }} req/min</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:var(--muted);">Активных правил</span>
+            <span style="font-weight:600;">{{ rules | selectattr("enabled") | list | length }} / {{ rules|length }}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:var(--muted);">Detection rate</span>
+            <span style="font-weight:600;color:var(--accent);">
+              {% set total_attacks = stats.block + stats.detect %}
+              {% if stats.total > 0 %}{{ "%.1f"|format(total_attacks / stats.total * 100) }}%{% else %}0%{% endif %}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ══ EVENTS ══ -->
-<div id="page-events" class="page active">
+<div id="page-events" class="page">
   <div class="filters">
-    <a href="/waf-admin?page=1&action=all"    class="fb {% if action_filter=='all' %}active{% endif %}">Все</a>
-    <a href="/waf-admin?page=1&action=block"  class="fb f-block  {% if action_filter=='block' %}active{% endif %}">Блокировки</a>
-    <a href="/waf-admin?page=1&action=detect" class="fb f-detect {% if action_filter=='detect' %}active{% endif %}">Обнаружения</a>
-    <a href="/waf-admin?page=1&action=allow"  class="fb f-allow  {% if action_filter=='allow' %}active{% endif %}">Пропущенные</a>
+    <a href="/waf-admin?page=1&action=all&tab=events"    class="fb {% if action_filter=='all' %}active{% endif %}">Все</a>
+    <a href="/waf-admin?page=1&action=block&tab=events"  class="fb f-block  {% if action_filter=='block' %}active{% endif %}">Блокировки</a>
+    <a href="/waf-admin?page=1&action=detect&tab=events" class="fb f-detect {% if action_filter=='detect' %}active{% endif %}">Обнаружения</a>
+    <a href="/waf-admin?page=1&action=allow&tab=events"  class="fb f-allow  {% if action_filter=='allow' %}active{% endif %}">Разрешённые</a>
     <span style="margin-left:auto;font-size:.72rem;color:var(--muted);">
       Стр. {{ current_page }} · показано {{ events|length }} из {{ total_events }}
     </span>
   </div>
-  <table id="eventsTable">
+  <table id="eventsTable" style="table-layout:fixed;">
+    <colgroup>
+      <col style="width:4.5%">
+      <col style="width:11%">
+      <col style="width:9%">
+      <col style="width:6%">
+      <col style="width:18%">
+      <col style="width:9%">
+      <col style="width:16%">
+      <col style="width:8%">
+      <col style="width:18.5%">
+    </colgroup>
     <thead><tr>
-      <th>#</th><th>Время (UTC)</th><th>IP</th><th>Метод</th>
-      <th>Путь</th><th>Действие</th><th>Правило</th><th>Severity</th><th>Совпадение</th>
+      {{ sort_th("#", "id", sort_by, sort_dir, action_filter, "page", "sort", "dir") }}
+      {{ sort_th("Время (UTC)", "timestamp", sort_by, sort_dir, action_filter, "page", "sort", "dir") }}
+      {{ sort_th("IP", "client_ip", sort_by, sort_dir, action_filter, "page", "sort", "dir") }}
+      {{ sort_th("Метод", "method", sort_by, sort_dir, action_filter, "page", "sort", "dir") }}
+      {{ sort_th("Путь", "path", sort_by, sort_dir, action_filter, "page", "sort", "dir") }}
+      {{ sort_th("Действие", "action", sort_by, sort_dir, action_filter, "page", "sort", "dir") }}
+      {{ sort_th("Правило", "rule_name", sort_by, sort_dir, action_filter, "page", "sort", "dir") }}
+      {{ sort_th("Severity", "severity", sort_by, sort_dir, action_filter, "page", "sort", "dir") }}
+      <th>Совпадение</th>
     </tr></thead>
     <tbody>
       {% for e in events %}
@@ -273,35 +447,50 @@
       Всего: {{ total_events }} · стр. {{ current_page }} из {{ total_pages }}
     </span>
     {% if current_page > 1 %}
-      <a href="/waf-admin?page=1&action={{ action_filter }}" class="pg-btn">«</a>
-      <a href="/waf-admin?page={{ current_page - 1 }}&action={{ action_filter }}" class="pg-btn">‹</a>
+      <a href="/waf-admin?page=1&action={{ action_filter }}&sort={{ sort_by }}&dir={{ sort_dir }}&tab=events" class="pg-btn">«</a>
+      <a href="/waf-admin?page={{ current_page - 1 }}&action={{ action_filter }}&sort={{ sort_by }}&dir={{ sort_dir }}&tab=events" class="pg-btn">‹</a>
     {% endif %}
     {% for p in range([1, current_page - 2] | max, [total_pages + 1, current_page + 3] | min) %}
-      <a href="/waf-admin?page={{ p }}&action={{ action_filter }}"
+      <a href="/waf-admin?page={{ p }}&action={{ action_filter }}&sort={{ sort_by }}&dir={{ sort_dir }}&tab=events"
          class="pg-btn {% if p == current_page %}active{% endif %}">{{ p }}</a>
     {% endfor %}
     {% if current_page < total_pages %}
-      <a href="/waf-admin?page={{ current_page + 1 }}&action={{ action_filter }}" class="pg-btn">›</a>
-      <a href="/waf-admin?page={{ total_pages }}&action={{ action_filter }}" class="pg-btn">»</a>
+      <a href="/waf-admin?page={{ current_page + 1 }}&action={{ action_filter }}&sort={{ sort_by }}&dir={{ sort_dir }}&tab=events" class="pg-btn">›</a>
+      <a href="/waf-admin?page={{ total_pages }}&action={{ action_filter }}&sort={{ sort_by }}&dir={{ sort_dir }}&tab=events" class="pg-btn">»</a>
     {% endif %}
   </div>
   {% endif %}
+
+  <!-- Экспорт текущей вкладки (с учётом фильтра) -->
+  <div style="display:flex;gap:.5rem;align-items:center;padding:.75rem 0;border-top:1px solid var(--border);margin-top:.5rem;">
+    <span style="font-size:.72rem;color:var(--muted);">Экспорт текущей выборки
+      ({% if action_filter == 'all' %}все события{% elif action_filter == 'block' %}блокировки{% elif action_filter == 'detect' %}обнаружения{% else %}разрешённые{% endif %}):
+    </span>
+    <a class="btn-export-hdr" href="/api/v1/events/export/json?action={{ action_filter }}">⬇ JSON</a>
+    <a class="btn-export-hdr" href="/api/v1/events/export/csv?action={{ action_filter }}">⬇ CSV</a>
+  </div>
 </div>
 
 <!-- ══ CHARTS ══ -->
 <div id="page-charts" class="page">
-  <div style="display:flex;align-items:center;justify-content:space-between;padding:.75rem 0;">
-    <span style="font-size:.8rem;color:var(--muted);">Данные обновляются при переходе на вкладку</span>
-    <button class="btn" onclick="loadCharts()" style="font-size:.75rem;">⟳ Обновить</button>
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:.75rem 0;flex-wrap:wrap;gap:.5rem;">
+    <span style="font-size:.8rem;color:var(--muted);">Данные обновляются при переходе на вкладку или смене периода</span>
+    <div style="display:flex;gap:.4rem;align-items:center;">
+      <span style="font-size:.72rem;color:var(--muted);">Период:</span>
+      <button class="fb chart-period active" data-period="24h" onclick="setChartPeriod('24h',this)">24 часа</button>
+      <button class="fb chart-period"        data-period="7d"  onclick="setChartPeriod('7d',this)">7 дней</button>
+      <button class="fb chart-period"        data-period="30d" onclick="setChartPeriod('30d',this)">30 дней</button>
+      <button class="btn" onclick="loadCharts()" style="font-size:.75rem;">⟳ Обновить</button>
+    </div>
   </div>
 
   <!-- Графики 2x2 -->
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:1.5rem;">
 
-    <!-- 1. Запросы по часам -->
+    <!-- 1. Запросы по времени -->
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.25rem;">
-      <div style="font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:1rem;">
-        Запросы по часам (последние 24ч)
+      <div style="font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:1rem;" id="chartHourlyTitle">
+        Запросы по времени (последние 24ч)
       </div>
       <canvas id="chartHourly" height="200"></canvas>
     </div>
@@ -359,13 +548,28 @@
 
 <!-- ══ INCIDENTS ══ -->
 <div id="page-incidents" class="page">
-  <div style="padding:.75rem 0 .5rem;font-size:.8rem;color:var(--muted);">
-    Инциденты выявляются автоматически на основе корреляции событий.
-    Каждый инцидент можно закрыть или отметить как ложное срабатывание.
+  <div style="padding:.75rem 0 .5rem;font-size:.8rem;color:var(--muted);display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+    <span>Инциденты выявляются автоматически на основе корреляции событий. Каждый инцидент можно закрыть или отметить как ложное срабатывание.</span>
+    <div style="margin-left:auto;display:flex;gap:.4rem;align-items:center;white-space:nowrap;">
+      <span style="font-size:.72rem;">Сортировка:</span>
+      <select onchange="window.location.href='?action={{ action_filter }}&inc_sort='+this.value+'&inc_dir={{ inc_dir }}&tab=incidents'"
+              style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:.25rem .5rem;font-size:.72rem;font-family:var(--font);">
+        <option value="id"          {% if inc_sort=='id' %}selected{% endif %}>По дате создания</option>
+        <option value="timestamp"   {% if inc_sort=='timestamp' %}selected{% endif %}>По времени</option>
+        <option value="severity"    {% if inc_sort=='severity' %}selected{% endif %}>По severity</option>
+        <option value="name"        {% if inc_sort=='name' %}selected{% endif %}>По типу</option>
+        <option value="event_count" {% if inc_sort=='event_count' %}selected{% endif %}>По числу событий</option>
+        <option value="status"      {% if inc_sort=='status' %}selected{% endif %}>По статусу</option>
+      </select>
+      <a href="?action={{ action_filter }}&inc_sort={{ inc_sort }}&inc_dir={{ 'asc' if inc_dir=='desc' else 'desc' }}&tab=incidents"
+         class="pg-btn" style="text-decoration:none;" title="Сменить направление">
+        {{ '▲' if inc_dir=='asc' else '▼' }}
+      </a>
+    </div>
   </div>
 
   {% for inc in incidents %}
-  <div class="incident-card {{ inc.severity }}">
+  <div class="incident-card {{ inc.severity }}" onclick="openIncidentModal({{ inc.id }})">
     <div class="incident-header">
       <span class="pill p-{{ inc.severity }}">{{ inc.severity|upper }}</span>
       <span class="incident-title">{{ inc.name }}</span>
@@ -375,7 +579,7 @@
         {% else %}ЛОЖНОЕ СРАБАТЫВАНИЕ{% endif %}
       </span>
       {% if inc.status == "open" %}
-      <div class="incident-actions">
+      <div class="incident-actions" onclick="event.stopPropagation()">
         <form method="post" action="/waf-admin/incidents/{{ inc.id }}/resolve" style="display:inline">
           <button type="submit" class="btn-resolve">✓ Закрыть</button>
         </form>
@@ -392,12 +596,33 @@
       <span>⏱ Окно: {{ inc.window_sec }}с</span>
     </div>
     <div style="margin-top:.4rem;font-size:.75rem;color:var(--muted);">{{ inc.description }}</div>
+    <div style="margin-top:.4rem;font-size:.7rem;color:var(--accent);">Нажмите для подробной информации →</div>
   </div>
   {% else %}
   <div class="empty" style="padding:3rem;">
     Инцидентов пока нет. Запустите нагрузочный тест для генерации данных.
   </div>
   {% endfor %}
+
+  <!-- Экспорт инцидентов -->
+  <div style="display:flex;gap:.5rem;align-items:center;padding:.75rem 0;border-top:1px solid var(--border);margin-top:.5rem;">
+    <span style="font-size:.72rem;color:var(--muted);">Экспорт инцидентов:</span>
+    <a class="btn-export-hdr" href="/api/v1/incidents/export/json">⬇ JSON</a>
+    <a class="btn-export-hdr" href="/api/v1/incidents/export/csv">⬇ CSV</a>
+  </div>
+</div>
+
+<!-- ══ INCIDENT DETAIL MODAL ══ -->
+<div class="modal-overlay" id="incidentModal" onclick="if(event.target===this) closeIncidentModal()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="modalTitle">Инцидент</h3>
+      <button class="modal-close" onclick="closeIncidentModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody">
+      <div class="modal-loading">Загрузка данных...</div>
+    </div>
+  </div>
 </div>
 
 <!-- ══ RULES ══ -->
@@ -409,7 +634,19 @@
       <div class="field"><label>Severity</label>
         <select id="rSeverity"><option value="high">High</option><option value="medium" selected>Medium</option><option value="low">Low</option></select>
       </div>
-      <div class="field"><label>Цели</label><input type="text" id="rTargets" value="query,body,uri"/></div>
+      <div class="field">
+        <label>Цели проверки</label>
+        <div style="display:flex;gap:.9rem;flex-wrap:wrap;align-items:center;padding:.4rem 0;">
+          {% for tgt, tlabel in [("query","Query string"), ("body","Body"), ("uri","URI / путь"), ("headers","Заголовки"), ("cookie","Cookie")] %}
+          <label style="display:flex;align-items:center;gap:.3rem;font-size:.78rem;font-weight:normal;cursor:pointer;white-space:nowrap;">
+            <input type="checkbox" class="rTarget" value="{{ tgt }}"
+                   {% if tgt in ("query","body","uri") %}checked{% endif %}
+                   style="width:14px;height:14px;accent-color:var(--accent);cursor:pointer;"/>
+            {{ tlabel }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
     </div>
     <div class="field" style="margin-bottom:.5rem;">
       <label>Regex-паттерн</label>
@@ -426,16 +663,16 @@
     <thead><tr><th>ID</th><th>Название</th><th>Паттерн</th><th>Цели</th><th>Severity</th><th>Статус</th><th>Действия</th></tr></thead>
     <tbody>
       {% for r in rules %}
-      <tr>
+      <tr data-rule-id="{{ r.id }}">
         <td class="muted mono">{{ r.id }}</td>
         <td>{{ r.name }}</td>
         <td class="mono trunc" title="{{ r.pattern }}">{{ r.pattern }}</td>
         <td class="mono muted">{{ r.targets }}</td>
         <td><span class="pill p-{{ r.severity }}">{{ r.severity|upper }}</span></td>
-        <td>{% if r.enabled %}<span class="pill p-on">ON</span>{% else %}<span class="pill p-off">OFF</span>{% endif %}</td>
+        <td class="rule-status">{% if r.enabled %}<span class="pill p-on">ON</span>{% else %}<span class="pill p-off">OFF</span>{% endif %}</td>
         <td style="white-space:nowrap">
-          <button class="btn-toggle" onclick="toggleRule({{ r.id }})">⇄</button>
-          <button class="btn-sm" onclick="deleteRule({{ r.id }})">✕</button>
+          <button class="btn-toggle" onclick="toggleRule({{ r.id }})" title="{% if r.enabled %}Выключить правило{% else %}Включить правило{% endif %}">⇄</button>
+          <button class="btn-sm" onclick="deleteRule({{ r.id }})" title="Удалить правило">✕</button>
         </td>
       </tr>
       {% else %}
@@ -445,7 +682,7 @@
   </table>
 </div>
 
-<!-- ══ IP Management ══ -->
+<!-- ══ IP-адреса ══ -->
 <div id="page-iplist" class="page">
   <div class="card">
     <h3>Добавить IP в список</h3>
@@ -595,9 +832,10 @@ async function createRule() {
   const name = document.getElementById('rName').value.trim();
   const pattern = document.getElementById('rPattern').value.trim();
   const severity = document.getElementById('rSeverity').value;
-  const targets = document.getElementById('rTargets').value.trim();
+  const targets = Array.from(document.querySelectorAll('.rTarget:checked')).map(c => c.value).join(',');
   const desc = document.getElementById('rDesc').value.trim();
   if (!name || !pattern) { alert('Заполните название и паттерн'); return; }
+  if (!targets) { alert('Выберите хотя бы одну цель проверки'); return; }
   const r = await apiCall('POST', '/api/v1/rules', {name,pattern,severity,targets,description:desc,enabled:true});
   if (r.ok) {
     const msg = document.getElementById('ruleMsg');
@@ -607,7 +845,23 @@ async function createRule() {
 }
 
 async function toggleRule(id) {
-  if ((await apiCall('POST', `/api/v1/rules/${id}/toggle`)).ok) location.reload();
+  const r = await apiCall('POST', `/api/v1/rules/${id}/toggle`);
+  if (!r.ok) { alert('Ошибка при переключении правила'); return; }
+  const rule = await r.json();
+
+  const row = document.querySelector(`#rulesTable tbody tr[data-rule-id="${id}"]`);
+  if (!row) { location.reload(); return; }
+
+  const statusCell = row.querySelector('.rule-status');
+  const toggleBtn  = row.querySelector('.btn-toggle');
+
+  if (rule.enabled) {
+    statusCell.innerHTML = '<span class="pill p-on">ON</span>';
+    toggleBtn.title = 'Выключить правило';
+  } else {
+    statusCell.innerHTML = '<span class="pill p-off">OFF</span>';
+    toggleBtn.title = 'Включить правило';
+  }
 }
 
 async function deleteRule(id) {
@@ -615,6 +869,155 @@ async function deleteRule(id) {
   const r = await apiCall('DELETE', `/api/v1/rules/${id}`);
   if (r.status === 204) location.reload();
 }
+
+// ── Модальное окно инцидента ─────────────────────────────────────────────────
+const SEV_COLORS = {
+  critical: 'var(--critical)', high: 'var(--danger)',
+  medium: 'var(--warn)', low: 'var(--ok)',
+};
+
+async function openIncidentModal(id) {
+  const modal = document.getElementById('incidentModal');
+  const body  = document.getElementById('modalBody');
+  const title = document.getElementById('modalTitle');
+
+  title.textContent = `Инцидент #${id}`;
+  body.innerHTML = '<div class="modal-loading">Загрузка данных...</div>';
+  modal.classList.add('open');
+
+  try {
+    const resp = await fetch(`/api/v1/incidents/${id}/details`);
+    if (!resp.ok) throw new Error('not found');
+    const d = await resp.json();
+    renderIncidentModal(d);
+  } catch (e) {
+    body.innerHTML = '<div class="modal-loading">Не удалось загрузить данные инцидента.</div>';
+  }
+}
+
+function closeIncidentModal() {
+  document.getElementById('incidentModal').classList.remove('open');
+}
+
+function renderIncidentModal(d) {
+  const inc   = d.incident;
+  const geo   = d.geo_info;
+  const sev   = (inc.severity || '').toLowerCase();
+  const sevColor = SEV_COLORS[sev] || 'var(--muted)';
+
+  document.getElementById('modalTitle').innerHTML =
+    `<span class="pill p-${sev}">${(inc.severity||'').toUpperCase()}</span> ${escapeHtml(inc.name)}`;
+
+  let html = '';
+
+  // ── Общая информация ──────────────────────────────────────────────────────
+  html += `<div class="modal-section">
+    <h4>Информация об инциденте</h4>
+    <div class="modal-grid">
+      <div class="modal-stat"><div class="lbl">Время</div><div class="val">${escapeHtml((inc.timestamp||'').slice(0,19).replace('T',' '))} UTC</div></div>
+      <div class="modal-stat"><div class="lbl">${escapeHtml(inc.group_by)}</div><div class="val" style="color:var(--accent)">${escapeHtml(inc.group_value)}</div></div>
+      <div class="modal-stat"><div class="lbl">Событий / порог</div><div class="val">${inc.event_count} / ${inc.threshold}</div></div>
+      <div class="modal-stat"><div class="lbl">Окно корреляции</div><div class="val">${inc.window_sec} сек</div></div>
+      <div class="modal-stat"><div class="lbl">Статус</div><div class="val">${
+        inc.status === 'open' ? 'ОТКРЫТ' : inc.status === 'resolved' ? 'ЗАКРЫТ' : 'ЛОЖНОЕ СРАБАТЫВАНИЕ'
+      }</div></div>
+      <div class="modal-stat"><div class="lbl">Тип правила</div><div class="val">${escapeHtml(inc.rule_id || '—')}</div></div>
+    </div>
+    <div style="margin-top:.6rem;font-size:.8rem;color:var(--muted);">${escapeHtml(inc.description || '')}</div>
+  </div>`;
+
+  // ── Геолокация / WHOIS ────────────────────────────────────────────────────
+  if (geo) {
+    if (geo.status === 'success') {
+      html += `<div class="modal-section">
+        <h4>Геолокация и сетевая информация (ip-api.com)</h4>
+        <div class="modal-grid">
+          <div class="modal-stat"><div class="lbl">Страна</div><div class="val">${escapeHtml(geo.country||'—')} (${escapeHtml(geo.countryCode||'')})</div></div>
+          <div class="modal-stat"><div class="lbl">Регион / Город</div><div class="val">${escapeHtml(geo.regionName||'—')}, ${escapeHtml(geo.city||'—')}</div></div>
+          <div class="modal-stat"><div class="lbl">Координаты</div><div class="val">${geo.lat ?? '—'}, ${geo.lon ?? '—'}</div></div>
+          <div class="modal-stat"><div class="lbl">Часовой пояс</div><div class="val">${escapeHtml(geo.timezone||'—')}</div></div>
+          <div class="modal-stat"><div class="lbl">ISP / Провайдер</div><div class="val">${escapeHtml(geo.isp||'—')}</div></div>
+          <div class="modal-stat"><div class="lbl">Организация</div><div class="val">${escapeHtml(geo.org||'—')}</div></div>
+          <div class="modal-stat"><div class="lbl">AS / Номер сети</div><div class="val">${escapeHtml(geo.as||'—')}</div></div>
+          <div class="modal-stat"><div class="lbl">Reverse DNS</div><div class="val">${escapeHtml(geo.reverse||'—')}</div></div>
+          <div class="modal-stat"><div class="lbl">Proxy / VPN</div><div class="val" style="color:${geo.proxy ? 'var(--danger)' : 'var(--ok)'}">${geo.proxy ? 'Да ⚠' : 'Нет'}</div></div>
+          <div class="modal-stat"><div class="lbl">Hosting / Datacenter</div><div class="val" style="color:${geo.hosting ? 'var(--warn)' : 'var(--text)'}">${geo.hosting ? 'Да' : 'Нет'}</div></div>
+        </div>
+      </div>`;
+    } else if (geo.status === 'private') {
+      html += `<div class="modal-section">
+        <h4>Геолокация</h4>
+        <div style="font-size:.8rem;color:var(--muted);">📍 ${escapeHtml(geo.message)} (${escapeHtml(inc.group_value)})</div>
+      </div>`;
+    }
+  }
+
+  // ── Сводка по типам атак ──────────────────────────────────────────────────
+  if (d.attack_summary && d.attack_summary.length) {
+    const maxCnt = Math.max(...d.attack_summary.map(a => a.count));
+    html += `<div class="modal-section"><h4>Типы атак в этом инциденте</h4>`;
+    d.attack_summary.forEach(a => {
+      const pct = Math.max(8, (a.count / maxCnt) * 100);
+      html += `<div class="attack-bar">
+        <span class="name">${escapeHtml(a.rule_name)}</span>
+        <span class="track"><span class="fill" style="width:${pct}%"></span></span>
+        <span class="cnt">${a.count}</span>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  // ── Связанные события ────────────────────────────────────────────────────
+  if (d.related_events && d.related_events.length) {
+    html += `<div class="modal-section">
+      <h4>Связанные события (${d.related_events.length})</h4>
+      <div class="modal-events"><table>
+        <thead><tr><th>#</th><th>Время</th><th>Метод</th><th>Путь</th><th>Действие</th><th>Правило</th></tr></thead>
+        <tbody>`;
+    d.related_events.forEach(ev => {
+      const actColor = ev.action === 'block' ? 'var(--danger)' : ev.action === 'detect' ? 'var(--warn)' : 'var(--ok)';
+      html += `<tr>
+        <td class="muted">${ev.id}</td>
+        <td>${escapeHtml((ev.timestamp||'').slice(0,19).replace('T',' '))}</td>
+        <td>${escapeHtml(ev.method||'')}</td>
+        <td class="mono" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(ev.path||'')}">${escapeHtml(ev.path||'')}</td>
+        <td style="color:${actColor};font-weight:600;">${(ev.action||'').toUpperCase()}</td>
+        <td class="muted">${escapeHtml(ev.rule_name||'—')}</td>
+      </tr>`;
+    });
+    html += `</tbody></table></div></div>`;
+  }
+
+  // ── SIEM-готовый JSON ─────────────────────────────────────────────────────
+  const siemJson = JSON.stringify(d.siem_event, null, 2);
+  html += `<div class="modal-section">
+    <h4>SIEM-представление (JSON)</h4>
+    <button class="copy-btn" onclick="copySiemJson(this)">⧉ Копировать</button>
+    <div class="siem-json" id="siemJsonBlock">${escapeHtml(siemJson)}</div>
+  </div>`;
+
+  document.getElementById('modalBody').innerHTML = html;
+  window._currentSiemJson = siemJson;
+}
+
+function copySiemJson(btn) {
+  navigator.clipboard.writeText(window._currentSiemJson || '').then(() => {
+    const orig = btn.textContent;
+    btn.textContent = '✓ Скопировано';
+    setTimeout(() => btn.textContent = orig, 1500);
+  });
+}
+
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeIncidentModal();
+});
 
 // ── Карта атак ────────────────────────────────────────────────────────────────
 let mapInitialized = false;
@@ -705,7 +1108,7 @@ async function initMap() {
         <hr style="border-color:#30363d;margin:4px 0">
         🔴 Заблокировано: <b>${ip.blocked}</b><br>
         🟡 Обнаружено: <b>${ip.detected}</b><br>
-        🟢 Пропущено: <b>${ip.allowed}</b><br>
+        🟢 Разрешено: <b>${ip.allowed}</b><br>
         📊 Всего: <b>${ip.total}</b>
       </div>
     `);
@@ -759,11 +1162,25 @@ const chartDefaults = {
   },
 };
 
+let currentChartPeriod = '24h';
+
+function setChartPeriod(period, el) {
+  currentChartPeriod = period;
+  document.querySelectorAll('.chart-period').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  loadCharts();
+}
+
 async function loadCharts() {
   await loadScript('https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js');
 
-  const resp = await fetch('/api/v1/charts');
+  const resp = await fetch('/api/v1/charts?period=' + currentChartPeriod);
   const d = await resp.json();
+
+  // Заголовок графика по периоду
+  const titleMap = {'24h': 'последние 24 часа', '7d': 'последние 7 дней', '30d': 'последние 30 дней'};
+  document.getElementById('chartHourlyTitle').textContent =
+    'Запросы по времени (' + (titleMap[currentChartPeriod] || '') + ')';
 
   // Уничтожаем старые графики
   Object.values(chartInstances).forEach(c => c.destroy());
@@ -788,7 +1205,7 @@ async function loadCharts() {
   chartInstances.donut = new Chart(document.getElementById('chartDonut'), {
     type: 'doughnut',
     data: {
-      labels: ['Заблокировано', 'Обнаружено', 'Пропущено'],
+      labels: ['Заблокировано', 'Обнаружено', 'Разрешено'],
       datasets: [{ data: [stats.block, stats.detect, stats.allow],
                    backgroundColor: [C.block, C.detect, C.allow],
                    borderColor: '#161b22', borderWidth: 3 }],
@@ -851,6 +1268,79 @@ function showTab(name, el) {
   if (name === 'charts') loadCharts();
   if (name === 'map') initMap();
 }
+
+// ── Графики на вкладке "Обзор" ───────────────────────────────────────────────
+let overviewChartsLoaded = false;
+
+async function loadOverviewCharts() {
+  if (overviewChartsLoaded) return;
+  overviewChartsLoaded = true;
+
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js');
+
+  const resp = await fetch('/api/v1/charts?period=24h');
+  const d = await resp.json();
+
+  // 1. Линейный график активности (block/detect/allow по часам)
+  new Chart(document.getElementById('overviewChart'), {
+    type: 'line',
+    data: {
+      labels: d.hourly.labels,
+      datasets: [
+        { label: 'Заблокировано', data: d.hourly.block,  borderColor: C.block,  backgroundColor: C.block+'33',  fill: true, tension: .3, pointRadius: 1.5 },
+        { label: 'Обнаружено',    data: d.hourly.detect, borderColor: C.detect, backgroundColor: C.detect+'33', fill: true, tension: .3, pointRadius: 1.5 },
+        { label: 'Разрешено',     data: d.hourly.allow,  borderColor: C.allow,  backgroundColor: C.allow+'22',  fill: true, tension: .3, pointRadius: 1.5 },
+      ],
+    },
+    options: { ...chartDefaults, responsive: true, maintainAspectRatio: true },
+  });
+
+  // 2. Топ правил (горизонтальный бар)
+  if (d.rules.labels.length) {
+    new Chart(document.getElementById('overviewRulesChart'), {
+      type: 'bar',
+      data: {
+        labels: d.rules.labels.slice(0,6).map(l => l.length > 28 ? l.slice(0,28)+'…' : l),
+        datasets: [{ label: 'Срабатываний', data: d.rules.values.slice(0,6),
+                     backgroundColor: C.block+'bb', borderColor: C.block, borderWidth: 1 }],
+      },
+      options: { ...chartDefaults, indexAxis: 'y', responsive: true, maintainAspectRatio: true,
+                 plugins: { ...chartDefaults.plugins, legend: { display: false } } },
+    });
+  } else {
+    document.getElementById('overviewRulesChart').parentElement.innerHTML +=
+      '<div class="empty" style="padding:1.5rem;font-size:.8rem;">Нет данных за последние 24 часа</div>';
+  }
+}
+
+// Загружаем графики обзора сразу при открытии страницы (Обзор — стартовая вкладка)
+loadOverviewCharts();
+
+// Восстанавливаем активную вкладку из URL (?tab=events / incidents / ...)
+(function initActiveTab() {
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get('tab');
+  if (!tab) return;
+
+  const tabMap = {
+    overview: 1, events: 2, charts: 3, incidents: 4,
+    map: 5, rules: 6, iplist: 7, api: 8,
+  };
+  const idx = tabMap[tab];
+  if (!idx) return;
+
+  const tabEl = document.querySelector(`.tab:nth-child(${idx})`);
+  const pageEl = document.getElementById('page-' + tab);
+  if (!tabEl || !pageEl) return;
+
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  tabEl.classList.add('active');
+  pageEl.classList.add('active');
+
+  if (tab === 'charts') loadCharts();
+  if (tab === 'map') initMap();
+})();
 
 renderTable();
 </script>

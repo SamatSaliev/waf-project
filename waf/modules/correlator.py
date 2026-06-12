@@ -201,15 +201,29 @@ class Correlator:
             logger.error("Ошибка сохранения инцидента: %s", e)
 
 
-async def get_recent_incidents(db_path: str, limit: int = 200) -> list[dict]:
+_INCIDENT_SORT_COLUMNS = {
+    "id": "id", "timestamp": "timestamp", "name": "name",
+    "severity": "severity", "group_value": "group_value",
+    "event_count": "event_count", "status": "status",
+}
+
+
+async def get_recent_incidents(
+    db_path: str, limit: int = 200,
+    sort_by: str = "id", sort_dir: str = "desc",
+) -> list[dict]:
+    sort_col = _INCIDENT_SORT_COLUMNS.get(sort_by, "id")
+    sort_ord = "ASC" if sort_dir == "asc" else "DESC"
     try:
         async with aiosqlite.connect(db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                """SELECT id, timestamp, rule_id, name, severity,
+                f"""SELECT id, timestamp, rule_id, name, severity,
                           group_by, group_value, event_count,
                           threshold, window_sec, status
-                   FROM incidents ORDER BY id DESC LIMIT ?""",
+                   FROM incidents
+                   ORDER BY {sort_col} {sort_ord}, id DESC
+                   LIMIT ?""",
                 (limit,),
             ) as cur:
                 rows = await cur.fetchall()
@@ -229,3 +243,52 @@ async def update_incident_status(db_path: str, incident_id: int, status: str) ->
         return True
     except Exception:
         return False
+
+
+async def get_incident_by_id(db_path: str, incident_id: int) -> dict | None:
+    """Возвращает один инцидент по ID."""
+    try:
+        async with aiosqlite.connect(db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """SELECT id, timestamp, rule_id, name, description, severity,
+                          group_by, group_value, event_count,
+                          threshold, window_sec, status
+                   FROM incidents WHERE id = ?""",
+                (incident_id,),
+            ) as cur:
+                row = await cur.fetchone()
+        return dict(row) if row else None
+    except Exception:
+        return None
+
+
+async def get_incident_related_events(
+    db_path: str, group_by: str, group_value: str,
+    window_sec: int, end_ts: str, limit: int = 50,
+) -> list[dict]:
+    """
+    Возвращает события, относящиеся к инциденту:
+    те, что соответствуют group_by=group_value и попадают
+    в окно корреляции (window_sec секунд до момента создания инцидента).
+    """
+    try:
+        async with aiosqlite.connect(db_path) as db:
+            db.row_factory = aiosqlite.Row
+            column = "client_ip" if group_by == "client_ip" else "path"
+            async with db.execute(
+                f"""SELECT id, timestamp, client_ip, method, path,
+                          action, rule_name, severity, matched, user_agent
+                   FROM events
+                   WHERE {column} = ?
+                     AND action IN ('block','detect')
+                     AND timestamp <= ?
+                     AND timestamp >= datetime(?, '-' || ? || ' seconds')
+                   ORDER BY id DESC
+                   LIMIT ?""",
+                (group_value, end_ts, end_ts, window_sec, limit),
+            ) as cur:
+                rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []

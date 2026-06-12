@@ -7,8 +7,11 @@ import csv
 import io
 import json
 import os
+import re as _re
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+
+import httpx
 
 from fastapi import Cookie, Depends, FastAPI, Form, HTTPException, Request, status, Cookie
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
@@ -32,7 +35,8 @@ from modules.rules_api import (
     create_rule, delete_rule, get_all_rules, get_rule, toggle_rule, update_rule,
 )
 from modules.correlator import (
-    Correlator, get_recent_incidents, update_incident_status,
+    Correlator, get_incident_by_id, get_incident_related_events,
+    get_recent_incidents, update_incident_status,
 )
 from modules.ti_sync import TISync
 from modules.telegram_notify import TelegramNotifier
@@ -220,14 +224,21 @@ async def admin_dashboard(
     page      = int(request.query_params.get("page", 1))
     per_page  = 100
     action    = request.query_params.get("action", "all")
+    sort_by   = request.query_params.get("sort", "id")
+    sort_dir  = request.query_params.get("dir", "desc")
+    inc_sort  = request.query_params.get("inc_sort", "id")
+    inc_dir   = request.query_params.get("inc_dir", "desc")
     events, total_events = await get_events_paginated(
         DB_PATH, page=page, per_page=per_page,
         action_filter=None if action == "all" else action,
+        sort_by=sort_by, sort_dir=sort_dir,
     )
     stats     = await get_events_stats(DB_PATH)
     ip_list   = await ip_filter.get_all()
     rules     = await get_all_rules(DB_PATH)
-    incidents = await get_recent_incidents(DB_PATH, limit=200)
+    incidents = await get_recent_incidents(
+        DB_PATH, limit=200, sort_by=inc_sort, sort_dir=inc_dir,
+    )
     return templates.TemplateResponse("dashboard.html", {
         "request":       request,
         "events":        events,
@@ -235,6 +246,10 @@ async def admin_dashboard(
         "current_page":  page,
         "per_page":      per_page,
         "action_filter": action,
+        "sort_by":       sort_by,
+        "sort_dir":      sort_dir,
+        "inc_sort":      inc_sort,
+        "inc_dir":       inc_dir,
         "stats":         stats,
         "ip_list":       ip_list,
         "rules":         rules,
@@ -317,32 +332,154 @@ async def api_get_events(limit: int = 1000, _: str = Depends(require_token)):
 
 
 @app.get("/api/v1/events/export/json", tags=["api-events"])
-async def api_export_json(_: str = Depends(no_auth)):
-    events, _ = await get_events_paginated(DB_PATH, page=1, per_page=999999)
+async def api_export_json(request: Request, _: str = Depends(no_auth)):
+    action = request.query_params.get("action", "all")
+    events, _ = await get_events_paginated(
+        DB_PATH, page=1, per_page=999999,
+        action_filter=None if action == "all" else action,
+    )
     content = json.dumps(
-        {"exported_at": _now(), "count": len(events), "events": events},
+        {"exported_at": _now(), "count": len(events), "filter": action, "events": events},
         ensure_ascii=False, indent=2,
     )
+    suffix = "" if action == "all" else f"_{action}"
     return StreamingResponse(
         io.BytesIO(content.encode()),
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="waf_events_{_today()}.json"'},
+        headers={"Content-Disposition": f'attachment; filename="waf_events{suffix}_{_today()}.json"'},
     )
 
 
 @app.get("/api/v1/events/export/csv", tags=["api-events"])
-async def api_export_csv(_: str = Depends(no_auth)):
-    events, _ = await get_events_paginated(DB_PATH, page=1, per_page=999999)
+async def api_export_csv(request: Request, _: str = Depends(no_auth)):
+    action = request.query_params.get("action", "all")
+    events, _ = await get_events_paginated(
+        DB_PATH, page=1, per_page=999999,
+        action_filter=None if action == "all" else action,
+    )
     buf    = io.StringIO()
     if events:
         writer = csv.DictWriter(buf, fieldnames=events[0].keys())
         writer.writeheader()
         writer.writerows(events)
+    suffix = "" if action == "all" else f"_{action}"
     return StreamingResponse(
         io.BytesIO(buf.getvalue().encode("utf-8-sig")),
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="waf_events_{_today()}.csv"'},
+        headers={"Content-Disposition": f'attachment; filename="waf_events{suffix}_{_today()}.csv"'},
     )
+
+
+@app.get("/api/v1/incidents/export/json", tags=["api-incidents"])
+async def api_export_incidents_json(_: str = Depends(no_auth)):
+    incidents = await get_recent_incidents(DB_PATH, limit=10000)
+    content = json.dumps(
+        {"exported_at": _now(), "count": len(incidents), "incidents": incidents},
+        ensure_ascii=False, indent=2,
+    )
+    return StreamingResponse(
+        io.BytesIO(content.encode()),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="waf_incidents_{_today()}.json"'},
+    )
+
+
+@app.get("/api/v1/incidents/export/csv", tags=["api-incidents"])
+async def api_export_incidents_csv(_: str = Depends(no_auth)):
+    incidents = await get_recent_incidents(DB_PATH, limit=10000)
+    buf = io.StringIO()
+    if incidents:
+        writer = csv.DictWriter(buf, fieldnames=incidents[0].keys())
+        writer.writeheader()
+        writer.writerows(incidents)
+    return StreamingResponse(
+        io.BytesIO(buf.getvalue().encode("utf-8-sig")),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="waf_incidents_{_today()}.csv"'},
+    )
+
+
+_PRIVATE_IP_RE = _re.compile(r"^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|127\.)")
+
+
+@app.get("/api/v1/incidents/{incident_id}/details", tags=["api-incidents"])
+async def api_incident_details(incident_id: int, _: str = Depends(no_auth)):
+    """
+    Подробная информация об инциденте: связанные события, геолокация/WHOIS IP
+    (через ip-api.com), сводка по типам атак и SIEM-готовое представление (CEF-like JSON).
+    """
+    incident = await get_incident_by_id(DB_PATH, incident_id)
+    if not incident:
+        raise HTTPException(status_code=404, detail="Инцидент не найден")
+
+    related_events = await get_incident_related_events(
+        DB_PATH,
+        group_by    = incident["group_by"],
+        group_value = incident["group_value"],
+        window_sec  = incident["window_sec"],
+        end_ts      = incident["timestamp"],
+        limit       = 50,
+    )
+
+    # ── Сводка по типам атак ────────────────────────────────────────────────
+    attack_types: dict[str, int] = {}
+    for ev in related_events:
+        rule = ev.get("rule_name") or "Неизвестно"
+        attack_types[rule] = attack_types.get(rule, 0) + 1
+    attack_summary = [
+        {"rule_name": k, "count": v}
+        for k, v in sorted(attack_types.items(), key=lambda x: -x[1])
+    ]
+
+    # ── Геолокация / WHOIS для IP ────────────────────────────────────────────
+    geo_info: dict | None = None
+    ip_candidate = incident["group_value"] if incident["group_by"] == "client_ip" else None
+
+    if ip_candidate and not _PRIVATE_IP_RE.match(ip_candidate):
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(
+                    f"http://ip-api.com/json/{ip_candidate}",
+                    params={"fields": "status,message,country,countryCode,region,regionName,"
+                                       "city,zip,lat,lon,timezone,isp,org,as,asname,reverse,proxy,hosting"},
+                )
+                data = resp.json()
+                if data.get("status") == "success":
+                    geo_info = data
+        except Exception:
+            geo_info = None
+    elif ip_candidate and _PRIVATE_IP_RE.match(ip_candidate):
+        geo_info = {"status": "private", "message": "Приватный IP-адрес — геолокация недоступна"}
+
+    # ── SIEM-готовый формат (упрощённый CEF / JSON) ─────────────────────────
+    siem_event = {
+        "siem_format":     "WAF-Incident-v1",
+        "device_vendor":   "KGTU-POKS",
+        "device_product":  "Custom-WAF",
+        "device_version":  "1.0",
+        "signature_id":    incident["rule_id"],
+        "name":            incident["name"],
+        "severity":        incident["severity"],
+        "timestamp":       incident["timestamp"],
+        "source": {
+            incident["group_by"]: incident["group_value"],
+            "geo": geo_info if geo_info and geo_info.get("status") == "success" else None,
+        },
+        "event_count":     incident["event_count"],
+        "threshold":       incident["threshold"],
+        "window_seconds":  incident["window_sec"],
+        "status":          incident["status"],
+        "attack_types":    attack_summary,
+        "related_events_count": len(related_events),
+    }
+
+    return {
+        "incident":       incident,
+        "related_events": related_events,
+        "attack_summary": attack_summary,
+        "geo_info":       geo_info,
+        "siem_event":     siem_event,
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -452,22 +589,48 @@ async def api_ip_remove(ip: str, _: str = Depends(require_token)):
 
 
 @app.get("/api/v1/report/pdf", tags=["api-report"])
-async def api_pdf_report(_: str = Depends(no_auth)):
-    """Генерирует и скачивает PDF отчёт об эффективности WAF."""
+async def api_pdf_report(request: Request, _: str = Depends(no_auth)):
+    """
+    Генерирует и скачивает PDF отчёт об эффективности WAF.
+    Параметры:
+      section=full|events|incidents — какие разделы включить (по умолчанию full)
+      action=all|block|detect|allow — фильтр событий для раздела events
+    """
     from modules.pdf_report import generate_pdf_report
+    section = request.query_params.get("section", "full")
+    action  = request.query_params.get("action", "all")
+
     stats      = await get_events_stats(DB_PATH)
     chart_data = await get_chart_data(DB_PATH)
-    incidents  = await get_recent_incidents(DB_PATH, limit=50)
+    incidents  = await get_recent_incidents(DB_PATH, limit=200)
+
+    # Раздел "события" — фильтруем по action и берём только нужную статистику
+    events_filtered = None
+    if section == "events":
+        events_filtered, total_filtered = await get_events_paginated(
+            DB_PATH, page=1, per_page=500,
+            action_filter=None if action == "all" else action,
+        )
+        incidents = []  # не включаем инциденты в отчёт по событиям
+    elif section == "incidents":
+        events_filtered = None
+        chart_data = {"rules": {"labels": [], "values": []}, "top_ips": {"labels": [], "values": []},
+                       "hourly": chart_data.get("hourly", {}), "daily": chart_data.get("daily", {})}
+    # section == "full" — всё как есть
 
     pdf_bytes = generate_pdf_report(
-        stats      = stats,
-        chart_data = chart_data,
-        incidents  = incidents,
-        waf_mode   = WAF_MODE,
-        rate_limit = RATE_LIMIT,
+        stats        = stats,
+        chart_data   = chart_data,
+        incidents    = incidents,
+        waf_mode     = WAF_MODE,
+        rate_limit   = RATE_LIMIT,
+        events       = events_filtered,
+        section      = section,
+        action_filter= action,
     )
 
-    filename = f"waf_report_{_today()}.pdf"
+    suffix = {"events": "events", "incidents": "incidents", "full": "full"}.get(section, "full")
+    filename = f"waf_report_{suffix}_{_today()}.pdf"
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
@@ -476,9 +639,11 @@ async def api_pdf_report(_: str = Depends(no_auth)):
 
 
 @app.get("/api/v1/charts", tags=["api-charts"])
-async def api_charts(_: str = Depends(no_auth)):
-    """Данные для графиков дашборда."""
-    data = await get_chart_data(DB_PATH)
+async def api_charts(period: str = "24h", _: str = Depends(no_auth)):
+    """Данные для графиков дашборда. period: 24h | 7d | 30d"""
+    if period not in ("24h", "7d", "30d"):
+        period = "24h"
+    data = await get_chart_data(DB_PATH, period=period)
     return data
 
 

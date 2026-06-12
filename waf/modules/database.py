@@ -83,18 +83,31 @@ async def get_recent_events(db_path: str, limit: int = 5000) -> list[dict]:
     return [dict(row) for row in rows]
 
 
+_EVENT_SORT_COLUMNS = {
+    "id": "id", "timestamp": "timestamp", "client_ip": "client_ip",
+    "method": "method", "path": "path", "action": "action",
+    "rule_name": "rule_name", "severity": "severity",
+}
+
+
 async def get_events_paginated(
     db_path: str, page: int = 1, per_page: int = 100,
     action_filter: str | None = None,
+    sort_by: str = "id", sort_dir: str = "desc",
 ) -> tuple[list[dict], int]:
     """
     Возвращает (события на странице, общее количество событий).
     page начинается с 1. action_filter: 'block' | 'detect' | 'allow' | None.
+    sort_by: id|timestamp|client_ip|method|path|action|rule_name|severity
+    sort_dir: asc|desc
     """
     offset = (page - 1) * per_page
     where  = "WHERE action = ?" if action_filter else ""
     p_count = (action_filter,) if action_filter else ()
     p_page  = (action_filter, per_page, offset) if action_filter else (per_page, offset)
+
+    sort_col = _EVENT_SORT_COLUMNS.get(sort_by, "id")
+    sort_ord = "ASC" if sort_dir == "asc" else "DESC"
 
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
@@ -105,7 +118,9 @@ async def get_events_paginated(
         async with db.execute(
             f"""SELECT id, timestamp, client_ip, method, path,
                       action, rule_name, severity, matched, user_agent
-               FROM events {where} ORDER BY id DESC LIMIT ? OFFSET ?""",
+               FROM events {where}
+               ORDER BY {sort_col} {sort_ord}, id DESC
+               LIMIT ? OFFSET ?""",
             p_page,
         ) as cur:
             rows = await cur.fetchall()
@@ -157,66 +172,101 @@ async def get_unique_ips(db_path: str, limit: int = 100) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-async def get_chart_data(db_path: str) -> dict:
-    """Возвращает данные для графиков дашборда."""
+_CHART_PERIODS = {
+    "24h": {"hours": 24,  "days": 7,  "hour_fmt": "%H:00", "hour_step": 1},
+    "7d":  {"hours": 168, "days": 7,  "hour_fmt": "%d.%m %H:00", "hour_step": 6},
+    "30d": {"hours": 720, "days": 30, "hour_fmt": "%d.%m", "hour_step": 24},
+}
+
+
+async def get_chart_data(db_path: str, period: str = "24h") -> dict:
+    """Возвращает данные для графиков дашборда.
+
+    period: '24h' (последние 24 часа), '7d' (7 дней), '30d' (30 дней).
+    Влияет на временной график и на окно подсчёта топ-правил/топ-IP.
+    """
+    cfg          = _CHART_PERIODS.get(period, _CHART_PERIODS["24h"])
+    window_hours = cfg["hours"]
+    window_days  = cfg["days"]
+
     async with aiosqlite.connect(db_path) as db:
 
-        # 1. Запросы по часам за последние 24 часа (block/detect/allow)
-        async with db.execute("""
+        # 1. Запросы по времени за выбранный период (block/detect/allow)
+        if period == "24h":
+            time_fmt = "%H:00"
+        elif period == "7d":
+            time_fmt = "%d.%m %Hh"
+        else:
+            time_fmt = "%d.%m"
+
+        async with db.execute(f"""
             SELECT
-                strftime('%H:00', timestamp) as hour,
+                strftime('{time_fmt}', timestamp) as bucket,
                 action,
                 COUNT(*) as cnt
             FROM events
-            WHERE timestamp >= datetime('now', '-24 hours')
-            GROUP BY hour, action
-            ORDER BY hour
-        """) as cur:
+            WHERE timestamp >= datetime('now', ?)
+            GROUP BY bucket, action
+            ORDER BY MIN(timestamp)
+        """, (f"-{window_hours} hours",)) as cur:
             hourly_rows = await cur.fetchall()
 
-        # 2. Топ-10 правил по срабатываниям
+        # 2. Топ-10 правил по срабатываниям (за тот же период)
         async with db.execute("""
             SELECT rule_name, COUNT(*) as cnt
             FROM events
             WHERE action IN ('block','detect')
               AND rule_name IS NOT NULL
+              AND timestamp >= datetime('now', ?)
             GROUP BY rule_name
             ORDER BY cnt DESC
             LIMIT 10
-        """) as cur:
+        """, (f"-{window_hours} hours",)) as cur:
             rules_rows = await cur.fetchall()
 
-        # 3. Топ-5 атакующих IP
+        # 3. Топ-5 атакующих IP (за тот же период)
         async with db.execute("""
             SELECT client_ip, COUNT(*) as cnt
             FROM events
             WHERE action IN ('block','detect')
               AND client_ip IS NOT NULL
+              AND timestamp >= datetime('now', ?)
             GROUP BY client_ip
             ORDER BY cnt DESC
             LIMIT 5
-        """) as cur:
+        """, (f"-{window_hours} hours",)) as cur:
             ips_rows = await cur.fetchall()
 
-        # 4. События по дням за последние 7 дней
+        # 4. События по дням за выбранный период
         async with db.execute("""
             SELECT
                 strftime('%d.%m', timestamp) as day,
                 action,
                 COUNT(*) as cnt
             FROM events
-            WHERE timestamp >= datetime('now', '-7 days')
+            WHERE timestamp >= datetime('now', ?)
             GROUP BY day, action
             ORDER BY day
-        """) as cur:
+        """, (f"-{window_days} days",)) as cur:
             daily_rows = await cur.fetchall()
 
-    # Собираем почасовые данные
-    hours = [f"{h:02d}:00" for h in range(24)]
-    hourly = {h: {"block": 0, "detect": 0, "allow": 0} for h in hours}
-    for hour, action, cnt in hourly_rows:
-        if hour in hourly and action in ("block", "detect", "allow"):
-            hourly[hour][action] = cnt
+    # Собираем временные данные (сохраняем порядок появления бакетов)
+    buckets: dict = {}
+    for bucket, action, cnt in hourly_rows:
+        if bucket not in buckets:
+            buckets[bucket] = {"block": 0, "detect": 0, "allow": 0}
+        if action in ("block", "detect", "allow"):
+            buckets[bucket][action] = cnt
+
+    # Для 24h дополняем недостающие часы нулями в правильном порядке
+    if period == "24h":
+        from datetime import datetime as _dt, timedelta as _td
+        now_h   = _dt.utcnow().replace(minute=0, second=0, microsecond=0)
+        ordered = {}
+        for i in range(23, -1, -1):
+            label = (now_h - _td(hours=i)).strftime("%H:00")
+            ordered[label] = buckets.get(label, {"block": 0, "detect": 0, "allow": 0})
+        buckets = ordered
 
     # Собираем дневные данные
     days_map: dict = {}
@@ -226,12 +276,15 @@ async def get_chart_data(db_path: str) -> dict:
         if action in ("block", "detect", "allow"):
             days_map[day][action] = cnt
 
+    bucket_labels = list(buckets.keys())
+
     return {
+        "period": period,
         "hourly": {
-            "labels": hours,
-            "block":  [hourly[h]["block"]  for h in hours],
-            "detect": [hourly[h]["detect"] for h in hours],
-            "allow":  [hourly[h]["allow"]  for h in hours],
+            "labels": bucket_labels,
+            "block":  [buckets[h]["block"]  for h in bucket_labels],
+            "detect": [buckets[h]["detect"] for h in bucket_labels],
+            "allow":  [buckets[h]["allow"]  for h in bucket_labels],
         },
         "rules": {
             "labels": [r[0] for r in rules_rows],
