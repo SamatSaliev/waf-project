@@ -610,6 +610,13 @@
     <a class="btn-export-hdr" href="/api/v1/incidents/export/json">⬇ JSON</a>
     <a class="btn-export-hdr" href="/api/v1/incidents/export/csv">⬇ CSV</a>
   </div>
+
+  <!-- ELK / SIEM интеграция -->
+  <div style="display:flex;gap:.6rem;align-items:center;padding:.75rem 0;border-top:1px solid var(--border);flex-wrap:wrap;">
+    <span style="font-size:.72rem;color:var(--muted);">ELK / SIEM:</span>
+    <span id="elkStatus" style="font-size:.72rem;color:var(--muted);">проверка...</span>
+    <button class="btn-export-hdr" onclick="resendAllToElk()" style="border-color:var(--accent);color:var(--accent);">⇪ Отправить все инциденты в ELK</button>
+  </div>
 </div>
 
 <!-- ══ INCIDENT DETAIL MODAL ══ -->
@@ -1312,6 +1319,37 @@ async function loadOverviewCharts() {
       '<div class="empty" style="padding:1.5rem;font-size:.8rem;">Нет данных за последние 24 часа</div>';
   }
 }
+
+// ── ELK / SIEM статус ─────────────────────────────────────────────────────────
+async function checkElkStatus() {
+  const el = document.getElementById('elkStatus');
+  if (!el) return;
+  try {
+    const r = await apiCall('GET', '/api/v1/elk/status');
+    const d = await r.json();
+    if (d.status === 'ok') {
+      el.innerHTML = `<span style="color:var(--ok)">● подключено</span> — ${escapeHtml(d.elk_url||'')} (ES ${escapeHtml(d.version||'?')})${d.enabled_flag ? '' : ' <span style="color:var(--warn)">[ELK_ENABLED=false]</span>'}`;
+    } else {
+      el.innerHTML = `<span style="color:var(--danger)">● ${escapeHtml(d.message || 'не настроен')}</span>`;
+    }
+  } catch (e) {
+    el.innerHTML = '<span style="color:var(--muted)">не настроено</span>';
+  }
+}
+
+async function resendAllToElk() {
+  if (!confirm('Отправить все инциденты в ELK?')) return;
+  const r = await apiCall('POST', '/api/v1/elk/resend-all');
+  if (r.ok) {
+    const d = await r.json();
+    alert(`Готово: отправлено ${d.sent} из ${d.total} (ошибок: ${d.failed})\nИндекс: ${d.index}`);
+  } else {
+    const err = await r.json().catch(() => ({}));
+    alert('Ошибка: ' + (err.detail || r.status));
+  }
+}
+
+checkElkStatus();
 
 // Загружаем графики обзора сразу при открытии страницы (Обзор — стартовая вкладка)
 loadOverviewCharts();

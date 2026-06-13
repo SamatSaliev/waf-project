@@ -5,6 +5,7 @@ correlator.py — модуль корреляции событий и выявл
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Any
@@ -161,7 +162,7 @@ class Correlator:
     async def _save_incident(self, incident: dict) -> None:
         try:
             async with aiosqlite.connect(self.db_path) as db:
-                await db.execute(
+                cur = await db.execute(
                     """INSERT INTO incidents
                        (rule_id, name, description, severity, group_by,
                         group_value, event_count, threshold, window_sec,
@@ -182,6 +183,7 @@ class Correlator:
                     ),
                 )
                 await db.commit()
+                incident_id = cur.lastrowid
             logger.warning(
                 "ИНЦИДЕНТ [%s] %s | %s=%s | событий: %d",
                 incident["severity"].upper(),
@@ -197,6 +199,34 @@ class Correlator:
                 asyncio.create_task(tg.send_incident(incident))
             except Exception as tg_err:
                 logger.error("Telegram error: %s", tg_err)
+
+            # ELK / Elasticsearch — отправляем SIEM-документ
+            try:
+                from modules.elk_sync import ELKSync
+                elk = ELKSync()
+                if elk.enabled:
+                    siem_event = {
+                        "siem_format":    "WAF-Incident-v1",
+                        "device_vendor":  "KGTU-POKS",
+                        "device_product": "Custom-WAF",
+                        "device_version": "1.0",
+                        "incident_id":    incident_id,
+                        "signature_id":   incident["rule_id"],
+                        "name":           incident["name"],
+                        "description":    incident["description"],
+                        "severity":       incident["severity"],
+                        "timestamp":      incident["timestamp"],
+                        "source": {
+                            incident["group_by"]: incident["group_value"],
+                        },
+                        "event_count":    incident["event_count"],
+                        "threshold":      incident["threshold"],
+                        "window_seconds": incident["window_sec"],
+                        "status":         incident["status"],
+                    }
+                    asyncio.create_task(elk.send_incident(siem_event))
+            except Exception as elk_err:
+                logger.error("ELK error: %s", elk_err)
         except Exception as e:
             logger.error("Ошибка сохранения инцидента: %s", e)
 

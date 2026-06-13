@@ -40,6 +40,7 @@ from modules.correlator import (
 )
 from modules.ti_sync import TISync
 from modules.telegram_notify import TelegramNotifier
+from modules.elk_sync import ELKSync
 
 # ── Конфигурация ──────────────────────────────────────────────────────────────
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:5000")
@@ -79,6 +80,7 @@ ip_filter       = IpFilter(db_path=DB_PATH)
 correlator      = Correlator(db_path=DB_PATH)
 ti_sync         = TISync(ip_filter=ip_filter, db_path=DB_PATH)
 tg              = TelegramNotifier()
+elk             = ELKSync()
 
 templates = Jinja2Templates(directory="templates")
 os.makedirs("static", exist_ok=True)
@@ -319,6 +321,87 @@ async def api_ti_sync_now(_: str = Depends(require_token)):
     """Принудительная синхронизация с TI прямо сейчас."""
     result = await ti_sync.sync_now()
     return result
+
+
+@app.get("/api/v1/elk/status", tags=["api-elk"])
+async def api_elk_status(_: str = Depends(require_token)):
+    """Статус подключения к ELK / Elasticsearch."""
+    from modules.elk_sync import ELK_URL, ELK_INDEX_PREFIX, ELK_ENABLED
+    result = await elk.test_connection()
+    result["configured_url"] = ELK_URL
+    result["index_prefix"]   = ELK_INDEX_PREFIX
+    result["enabled_flag"]   = ELK_ENABLED
+    return result
+
+
+@app.post("/api/v1/elk/resend/{incident_id}", tags=["api-elk"])
+async def api_elk_resend_incident(incident_id: int, _: str = Depends(require_token)):
+    """Повторная отправка одного инцидента в ELK (например для теста)."""
+    if not elk.enabled:
+        raise HTTPException(status_code=400, detail="ELK Sync не включён (ELK_ENABLED=false или ELK_URL не задан)")
+
+    incident = await get_incident_by_id(DB_PATH, incident_id)
+    if not incident:
+        raise HTTPException(status_code=404, detail=f"Инцидент {incident_id} не найден")
+
+    siem_event = {
+        "siem_format":    "WAF-Incident-v1",
+        "device_vendor":  "KGTU-POKS",
+        "device_product": "Custom-WAF",
+        "device_version": "1.0",
+        "incident_id":    incident["id"],
+        "signature_id":   incident["rule_id"],
+        "name":           incident["name"],
+        "description":    incident["description"],
+        "severity":       incident["severity"],
+        "timestamp":      incident["timestamp"],
+        "source": {
+            incident["group_by"]: incident["group_value"],
+        },
+        "event_count":    incident["event_count"],
+        "threshold":      incident["threshold"],
+        "window_seconds": incident["window_sec"],
+        "status":         incident["status"],
+    }
+    ok = await elk.send_incident(siem_event)
+    if not ok:
+        raise HTTPException(status_code=502, detail="Не удалось отправить инцидент в ELK — проверьте логи waf")
+    return {"status": "ok", "incident_id": incident_id, "index": elk._index_name()}
+
+
+@app.post("/api/v1/elk/resend-all", tags=["api-elk"])
+async def api_elk_resend_all(_: str = Depends(require_token)):
+    """Отправляет все инциденты из БД в ELK (полезно при первой настройке)."""
+    if not elk.enabled:
+        raise HTTPException(status_code=400, detail="ELK Sync не включён (ELK_ENABLED=false или ELK_URL не задан)")
+
+    incidents = await get_recent_incidents(DB_PATH, limit=10000)
+    sent, failed = 0, 0
+    for incident in incidents:
+        siem_event = {
+            "siem_format":    "WAF-Incident-v1",
+            "device_vendor":  "KGTU-POKS",
+            "device_product": "Custom-WAF",
+            "device_version": "1.0",
+            "incident_id":    incident["id"],
+            "signature_id":   incident["rule_id"],
+            "name":           incident["name"],
+            "description":    incident["description"],
+            "severity":       incident["severity"],
+            "timestamp":      incident["timestamp"],
+            "source": {
+                incident["group_by"]: incident["group_value"],
+            },
+            "event_count":    incident["event_count"],
+            "threshold":      incident["threshold"],
+            "window_seconds": incident["window_sec"],
+            "status":         incident["status"],
+        }
+        if await elk.send_incident(siem_event):
+            sent += 1
+        else:
+            failed += 1
+    return {"status": "ok", "total": len(incidents), "sent": sent, "failed": failed, "index": elk._index_name()}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
