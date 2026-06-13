@@ -12,7 +12,7 @@ services:
       - DB_PATH=/data/waf.db
       - LOG_PATH=/data/events.jsonl
       - RATE_LIMIT=60
-      - WAF_API_TOKEN=my-secret-token-change-me
+      - WAF_API_TOKEN=&^KBaIWw3FgV6vdsoo%d$pPeyUWg!8^5
       - DASHBOARD_PASSWORD=waf-admin-2024
       # ── Threat Intelligence (POKS TI) ──────────────────────
       - TI_ENABLED=true
@@ -24,12 +24,12 @@ services:
       - TG_BOT_TOKEN=8117519145:AAF9tLwawJC-KYbcQd2EeTr6js3isGMxDKE
       - TG_CHAT_ID=-5209220154
       # ── ELK / Elasticsearch (отправка инцидентов в SIEM) ────
-      - ELK_ENABLED=false
+      - ELK_ENABLED=true
       - ELK_URL=https://10.135.126.2:9200
       - ELK_USER=s_saliev
       - ELK_PASSWORD=SOC_Member_2026!
       - ELK_INDEX_PREFIX=waf-incidents
-      - ELK_VERIFY_SSL=false
+      - ELK_VERIFY_SSL=true
       # ── IP Whitelist для /waf-admin ─────────────────────────
       # Оставьте пустым чтобы разрешить всем, или укажите IP через запятую:
       # - ADMIN_IP_WHITELIST=10.135.125.10,10.11.10.3,172.18.0.1
