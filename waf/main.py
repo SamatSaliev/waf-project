@@ -32,7 +32,8 @@ from modules.rate_limiter import RateLimiter
 from modules.request_parser import parse_request
 from modules.rule_engine import RuleEngine
 from modules.rules_api import (
-    create_rule, delete_rule, get_all_rules, get_rule, toggle_rule, update_rule,
+    create_rule, delete_rule, get_all_rules, get_rule, toggle_rule,
+    toggle_rule_mode, update_rule,
 )
 from modules.correlator import (
     Correlator, get_incident_by_id, get_incident_related_events,
@@ -599,11 +600,13 @@ async def api_fp_incident(incident_id: int, _: str = Depends(require_token)):
 class RuleCreate(BaseModel):
     name: str; description: str = ""; pattern: str
     targets: str = "query,body,uri"; severity: str = "medium"; enabled: bool = True
+    mode: str = "blocking"
 
 class RuleUpdate(BaseModel):
     name: str | None = None; description: str | None = None
     pattern: str | None = None; targets: str | None = None
     severity: str | None = None; enabled: bool | None = None
+    mode: str | None = None
 
 
 @app.get("/api/v1/rules", tags=["api-rules"])
@@ -635,6 +638,15 @@ async def api_update_rule(rule_id: int, body: RuleUpdate, _: str = Depends(requi
 @app.post("/api/v1/rules/{rule_id}/toggle", tags=["api-rules"])
 async def api_toggle_rule(rule_id: int, _: str = Depends(require_token)):
     rule = await toggle_rule(DB_PATH, rule_id)
+    if not rule:
+        raise HTTPException(status_code=404, detail=f"Правило {rule_id} не найдено")
+    await rule_engine.load_rules(DB_PATH)
+    return rule
+
+@app.post("/api/v1/rules/{rule_id}/toggle-mode", tags=["api-rules"])
+async def api_toggle_rule_mode(rule_id: int, _: str = Depends(require_token)):
+    """Переключает режим правила: blocking <-> detection (для тестирования новых правил)."""
+    rule = await toggle_rule_mode(DB_PATH, rule_id)
     if not rule:
         raise HTTPException(status_code=404, detail=f"Правило {rule_id} не найдено")
     await rule_engine.load_rules(DB_PATH)

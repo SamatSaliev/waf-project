@@ -12,7 +12,7 @@ services:
       - DB_PATH=/data/waf.db
       - LOG_PATH=/data/events.jsonl
       - RATE_LIMIT=60
-      - WAF_API_TOKEN=&^KBaIWw3FgV6vdsoo%d$pPeyUWg!8^5
+      - WAF_API_TOKEN=vqo8hLZam9pID1H1Uc1rB25fehg8TBkI
       - DASHBOARD_PASSWORD=waf-admin-2024
       # ── Threat Intelligence (POKS TI) ──────────────────────
       - TI_ENABLED=true

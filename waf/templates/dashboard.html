@@ -235,14 +235,15 @@
   <span class="badge b-incident">⚠ {{ open_incidents }} инцидент{{ 'а' if open_incidents < 5 else 'ов' }}</span>
   {% endif %}
 
-  <!-- Переключатель режима -->
-  <form method="post" action="/waf-admin/mode" style="display:flex;align-items:center;gap:.4rem;margin-left:.5rem;">
+  <!-- Глобальный аварийный переключатель режима (fallback для всех правил) -->
+  <form method="post" action="/waf-admin/mode" style="display:flex;align-items:center;gap:.4rem;margin-left:.5rem;"
+        title="Аварийный режим: переводит ВСЕ правила в Detection независимо от их индивидуальных настроек">
     {% if mode == "blocking" %}
-      <span class="badge b-block">● Blocking</span>
-      <button type="submit" name="mode" value="detection" class="btn-mode btn-mode-switch">→ Detection</button>
+      <span class="badge b-block" title="Обычный режим — каждое правило работает по своей настройке">● Normal</span>
+      <button type="submit" name="mode" value="detection" class="btn-mode btn-mode-switch">⚠ Detection All</button>
     {% else %}
-      <span class="badge b-detect">● Detection</span>
-      <button type="submit" name="mode" value="blocking" class="btn-mode btn-mode-switch">→ Blocking</button>
+      <span class="badge b-detect" title="Аварийный режим — блокировка отключена для ВСЕХ правил">⚠ Detection All</span>
+      <button type="submit" name="mode" value="blocking" class="btn-mode btn-mode-switch">→ Normal</button>
     {% endif %}
   </form>
 
@@ -667,7 +668,7 @@
     <span id="ruleMsg" style="margin-left:.75rem;font-size:.75rem;color:var(--ok);display:none;"></span>
   </div>
   <table id="rulesTable">
-    <thead><tr><th>ID</th><th>Название</th><th>Паттерн</th><th>Цели</th><th>Severity</th><th>Статус</th><th>Действия</th></tr></thead>
+    <thead><tr><th>ID</th><th>Название</th><th>Паттерн</th><th>Цели</th><th>Severity</th><th>Режим</th><th>Статус</th><th>Действия</th></tr></thead>
     <tbody>
       {% for r in rules %}
       <tr data-rule-id="{{ r.id }}">
@@ -676,6 +677,14 @@
         <td class="mono trunc" title="{{ r.pattern }}">{{ r.pattern }}</td>
         <td class="mono muted">{{ r.targets }}</td>
         <td><span class="pill p-{{ r.severity }}">{{ r.severity|upper }}</span></td>
+        <td class="rule-mode">
+          <span class="pill mode-badge p-{{ 'on' if r.mode == 'blocking' else 'detect' }}"
+                onclick="toggleRuleMode({{ r.id }})"
+                style="cursor:pointer;"
+                title="{% if r.mode == 'blocking' %}Режим: Blocking — нажмите чтобы перевести в тестовый режим Detection{% else %}Режим: Detection (тест) — нажмите чтобы включить блокировку{% endif %}">
+            {% if r.mode == 'blocking' %}🛑 BLOCK{% else %}🔎 DETECT{% endif %}
+          </span>
+        </td>
         <td class="rule-status">{% if r.enabled %}<span class="pill p-on">ON</span>{% else %}<span class="pill p-off">OFF</span>{% endif %}</td>
         <td style="white-space:nowrap">
           <button class="btn-toggle" onclick="toggleRule({{ r.id }})" title="{% if r.enabled %}Выключить правило{% else %}Включить правило{% endif %}">⇄</button>
@@ -683,10 +692,13 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="7" class="empty">Правил нет.</td></tr>
+      <tr><td colspan="8" class="empty">Правил нет.</td></tr>
       {% endfor %}
     </tbody>
   </table>
+  <div style="font-size:.72rem;color:var(--muted);padding:.6rem 0;">
+    💡 <strong>Detection</strong> — тестовый режим: правило срабатывает, событие логируется как «Обнаружено», но запрос <strong>не блокируется</strong>. Удобно для проверки нового правила перед включением блокировки. Нажмите на бейдж режима чтобы переключить.
+  </div>
 </div>
 
 <!-- ══ IP-адреса ══ -->
@@ -868,6 +880,28 @@ async function toggleRule(id) {
   } else {
     statusCell.innerHTML = '<span class="pill p-off">OFF</span>';
     toggleBtn.title = 'Включить правило';
+  }
+}
+
+async function toggleRuleMode(id) {
+  const r = await apiCall('POST', `/api/v1/rules/${id}/toggle-mode`);
+  if (!r.ok) { alert('Ошибка при переключении режима правила'); return; }
+  const rule = await r.json();
+
+  const row = document.querySelector(`#rulesTable tbody tr[data-rule-id="${id}"]`);
+  if (!row) { location.reload(); return; }
+
+  const modeCell = row.querySelector('.rule-mode');
+  const badge = modeCell.querySelector('.mode-badge');
+
+  if (rule.mode === 'blocking') {
+    badge.className = 'pill mode-badge p-on';
+    badge.textContent = '🛑 BLOCK';
+    badge.title = 'Режим: Blocking — нажмите чтобы перевести в тестовый режим Detection';
+  } else {
+    badge.className = 'pill mode-badge p-detect';
+    badge.textContent = '🔎 DETECT';
+    badge.title = 'Режим: Detection (тест) — нажмите чтобы включить блокировку';
   }
 }
 

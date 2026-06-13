@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS rules (
     targets     TEXT    NOT NULL,
     severity    TEXT    NOT NULL DEFAULT 'medium',
     enabled     INTEGER NOT NULL DEFAULT 1,
+    mode        TEXT    NOT NULL DEFAULT 'blocking'
+                CHECK(mode IN ('blocking','detection')),
     created_at  TEXT    DEFAULT (datetime('now'))
 );
 
@@ -68,6 +70,16 @@ async def init_db(db_path: str) -> None:
     async with aiosqlite.connect(db_path) as db:
         await db.executescript(DDL)
         await db.commit()
+
+        # Миграция: добавляем колонку mode в существующие таблицы rules,
+        # если их создали до появления режима per-rule.
+        async with db.execute("PRAGMA table_info(rules)") as cur:
+            cols = [row[1] for row in await cur.fetchall()]
+        if "mode" not in cols:
+            await db.execute(
+                "ALTER TABLE rules ADD COLUMN mode TEXT NOT NULL DEFAULT 'blocking'"
+            )
+            await db.commit()
 
 
 async def get_recent_events(db_path: str, limit: int = 5000) -> list[dict]:

@@ -171,7 +171,7 @@ class RuleEngine:
             else:
                 await self._seed_missing(db)
             async with db.execute(
-                "SELECT id, name, description, pattern, targets, severity "
+                "SELECT id, name, description, pattern, targets, severity, mode "
                 "FROM rules WHERE enabled = 1"
             ) as cur:
                 rows = await cur.fetchall()
@@ -181,6 +181,7 @@ class RuleEngine:
             self._rules.append({
                 "id": row[0], "name": row[1], "description": row[2],
                 "pattern": row[3], "targets": row[4].split(","), "severity": row[5],
+                "mode": row[6] or "blocking",
             })
 
         self._compiled = []
@@ -193,16 +194,16 @@ class RuleEngine:
     async def _seed(self, db: aiosqlite.Connection) -> None:
         for r in DEFAULT_RULES:
             await db.execute(
-                "INSERT OR IGNORE INTO rules (id,name,description,pattern,targets,severity,enabled) VALUES (?,?,?,?,?,?,?)",
-                (r["id"], r["name"], r["description"], r["pattern"], ",".join(r["targets"]), r["severity"], int(r["enabled"])),
+                "INSERT OR IGNORE INTO rules (id,name,description,pattern,targets,severity,enabled,mode) VALUES (?,?,?,?,?,?,?,?)",
+                (r["id"], r["name"], r["description"], r["pattern"], ",".join(r["targets"]), r["severity"], int(r["enabled"]), "blocking"),
             )
         await db.commit()
 
     async def _seed_missing(self, db: aiosqlite.Connection) -> None:
         for r in DEFAULT_RULES:
             await db.execute(
-                "INSERT OR IGNORE INTO rules (id,name,description,pattern,targets,severity,enabled) VALUES (?,?,?,?,?,?,?)",
-                (r["id"], r["name"], r["description"], r["pattern"], ",".join(r["targets"]), r["severity"], int(r["enabled"])),
+                "INSERT OR IGNORE INTO rules (id,name,description,pattern,targets,severity,enabled,mode) VALUES (?,?,?,?,?,?,?,?)",
+                (r["id"], r["name"], r["description"], r["pattern"], ",".join(r["targets"]), r["severity"], int(r["enabled"]), "blocking"),
             )
         await db.commit()
 
@@ -220,6 +221,7 @@ class RuleEngine:
                         "rule_id": rule["id"], "name": rule["name"],
                         "severity": rule["severity"], "target": target_name,
                         "matched": m.group(0)[:120],
+                        "mode": rule.get("mode", "blocking"),
                     })
                     break
         return matches
