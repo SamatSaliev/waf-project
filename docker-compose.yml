@@ -26,8 +26,8 @@ services:
       # ── ELK / Elasticsearch (отправка инцидентов в SIEM) ────
       - ELK_ENABLED=true
       - ELK_URL=https://10.135.126.2:9200
-      - ELK_USER=
-      - ELK_PASSWORD=
+      - ELK_USER=s_saliev
+      - ELK_PASSWORD=SOC_Member_2026!
       - ELK_INDEX_PREFIX=waf-incidents
       - ELK_VERIFY_SSL=false
       # ── IP Whitelist для /waf-admin ─────────────────────────
