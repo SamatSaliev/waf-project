@@ -12,11 +12,11 @@ services:
       - DB_PATH=/data/waf.db
       - LOG_PATH=/data/events.jsonl
       - RATE_LIMIT=60
-      - WAF_API_TOKEN=vqo8hLZam9pID1H1Uc1rB25fehg8TBkI
-      - DASHBOARD_PASSWORD=waf-admin-2024
+      - WAF_API_TOKEN=dNfts2G3P0xu1pxFndymxf37jZAjLDfO
+      - DASHBOARD_PASSWORD=waf-admin-2026
       # ── Threat Intelligence (POKS TI) ──────────────────────
       - TI_ENABLED=true
-      - TI_BASE_URL=http://10.135.126.10:8080
+      - TI_BASE_URL=http://10.135.126.10:8000
       - TI_SYNC_INTERVAL=300
       - TI_SCORE_THRESHOLD=50
       # ── Telegram уведомления ────────────────────────────────
@@ -26,16 +26,24 @@ services:
       # ── ELK / Elasticsearch (отправка инцидентов в SIEM) ────
       - ELK_ENABLED=true
       - ELK_URL=https://10.135.126.2:9200
-      - ELK_USER=s_saliev
-      - ELK_PASSWORD=SOC_Member_2026!
+      - ELK_USER=
+      - ELK_PASSWORD=
       - ELK_INDEX_PREFIX=waf-incidents
-      - ELK_VERIFY_SSL=true
+      - ELK_VERIFY_SSL=false
       # ── IP Whitelist для /waf-admin ─────────────────────────
       # Оставьте пустым чтобы разрешить всем, или укажите IP через запятую:
       # - ADMIN_IP_WHITELIST=10.135.125.10,10.11.10.3,172.18.0.1
       - ADMIN_IP_WHITELIST=
+      # ── Шифрование секретов (опционально) ──────────────────
+      # Если задан — WAF расшифрует secrets.enc.json при старте.
+      # Значения из secrets.enc.json НЕ перезаписывают переменные выше.
+      # Оставьте пустым если не используете зашифрованные секреты.
+      - WAF_MASTER_KEY=
+      - SECRETS_FILE=/run/secrets/secrets.enc.json
     volumes:
       - waf_data:/data
+      # Монтируем зашифрованный файл секретов (если существует)
+      # - ./secrets.enc.json:/run/secrets/secrets.enc.json:ro
     depends_on:
       - backend
     restart: unless-stopped

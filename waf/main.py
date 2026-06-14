@@ -13,6 +13,11 @@ from datetime import datetime, timezone
 
 import httpx
 
+# ── Расшифровка секретов ДОЛЖНА выполниться ДО импорта модулей, которые ──────
+# читают переменные окружения на уровне модуля (auth, ti_sync, telegram_notify, elk_sync)
+from modules.secrets_manager import load_encrypted_secrets
+load_encrypted_secrets()
+
 from fastapi import Cookie, Depends, FastAPI, Form, HTTPException, Request, status, Cookie
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles

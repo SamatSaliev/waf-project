@@ -1,0 +1,20 @@
+# Секреты — НИКОГДА не коммитить в git!
+.master.key
+*.key
+.env.local
+secrets.plain.json
+
+# Зашифрованный файл секретов — коммитить МОЖНО (он зашифрован)
+# secrets.enc.json  # раскомментируйте если НЕ хотите хранить в git
+
+# Docker и Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+
+# Данные WAF (локальная БД)
+waf/data/
+*.db
+*.jsonl
